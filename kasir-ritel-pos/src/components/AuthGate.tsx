@@ -1,6 +1,27 @@
 import React, { useState } from 'react';
 import { supabase } from '../db/supabaseClient';
 
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: 6,
+  fontSize: '0.88rem',
+  fontWeight: 600,
+  color: '#1e293b'
+};
+
+const inputStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 12px',
+  marginBottom: 14,
+  borderRadius: 6,
+  border: '1px solid #cbd5e1',
+  fontSize: '0.95rem',
+  background: '#ffffff',
+  color: '#0f172a'
+};
+
 export const AuthGate: React.FC = () => {
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [storeName, setStoreName] = useState('');
@@ -83,7 +104,7 @@ export const AuthGate: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: '#1e293b', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-      <div className="modal-box" style={{ maxWidth: 420 }}>
+      <div className="modal-box" style={{ maxWidth: 420, width: '100%', boxSizing: 'border-box', textAlign: 'left' }}>
         <div style={{ textAlign: 'center', marginBottom: 18 }}>
           <h2 style={{ border: 'none', margin: 0, fontSize: '1.35rem', color: '#0f172a' }}>Kasir Ritel POS Cloud</h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
@@ -91,7 +112,7 @@ export const AuthGate: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
           <button
             type="button"
             onClick={() => { setMode('LOGIN'); setErrorMessage(''); setInfoMessage(''); }}
@@ -125,57 +146,69 @@ export const AuthGate: React.FC = () => {
         </div>
 
         {infoMessage && (
-          <div style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: 10, borderRadius: 6, fontSize: '0.84rem', marginBottom: 12 }}>
+          <div style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: 10, borderRadius: 6, fontSize: '0.84rem', marginBottom: 14 }}>
             {infoMessage}
           </div>
         )}
 
         {errorMessage && (
-          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', padding: 10, borderRadius: 6, fontSize: '0.84rem', marginBottom: 12 }}>
+          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', padding: 10, borderRadius: 6, fontSize: '0.84rem', marginBottom: 14 }}>
             {errorMessage}
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
           {mode === 'REGISTER' && (
-            <>
-              <label><strong>Nama Toko</strong></label>
+            <div>
+              <label style={labelStyle}>Nama Toko</label>
               <input
                 type="text"
+                style={inputStyle}
                 placeholder="Contoh: Toko Sembako Berkah"
                 value={storeName}
                 onChange={(e) => setStoreName(e.target.value)}
                 required
               />
-            </>
+            </div>
           )}
 
-          <label><strong>Email Akun Toko</strong></label>
-          <input
-            type="email"
-            placeholder="nama@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <div>
+            <label style={labelStyle}>Email Akun Toko</label>
+            <input
+              type="email"
+              style={inputStyle}
+              placeholder="nama@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
 
-          <label><strong>Kata Sandi Akun</strong></label>
-          <input
-            type="password"
-            placeholder="Minimal 6 karakter..."
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <div>
+            <label style={labelStyle}>Kata Sandi Akun</label>
+            <input
+              type="password"
+              style={inputStyle}
+              placeholder="Minimal 6 karakter..."
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-          <button type="submit" className="btn-primary" style={{ marginTop: 6, padding: 12 }} disabled={loading}>
+          <button
+            type="submit"
+            className="btn-primary"
+            style={{ display: 'block', width: '100%', marginTop: 4, padding: 12 }}
+            disabled={loading}
+          >
             {loading ? 'Memproses...' : mode === 'LOGIN' ? 'Masuk ke Kasir' : 'Buat Akun & Kirim Verifikasi'}
           </button>
         </form>
 
         {mode === 'LOGIN' && (
-          <div style={{ textAlign: 'center', marginTop: 12 }}>
+          <div style={{ textAlign: 'center', marginTop: 14 }}>
             <button
               type="button"
               onClick={handleResendVerification}
