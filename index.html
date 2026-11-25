@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kasir Ritel v2.3 - POS Lengkap, Verifikasi QRIS & Kas Laci</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 0; background: #f3f4f6; color: #1f2937; }
+    
+    /* Navigasi Tab Atas & Indikator Role */
+    .navbar { background: #1e293b; color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .brand-area { display: flex; align-items: center; gap: 10px; }
+    .navbar h1 { margin: 0; font-size: 1.2rem; }
+    .role-badge { font-size: 0.75rem; padding: 3px 9px; border-radius: 12px; font-weight: bold; text-transform: uppercase; }
+    .role-kasir { background: #0284c7; color: #e0f2fe; }
+    .role-owner { background: #d97706; color: #fef3c7; }
+
+    .nav-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .nav-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .nav-btn { background: #334155; color: #cbd5e1; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.15s; font-size: 0.88rem; }
+    .nav-btn.active { background: #2563eb; color: white; }
+    .nav-btn:hover:not(.active) { background: #475569; }
+    
+    .btn-auth-owner { background: #f59e0b; color: #111827; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.88rem; transition: 0.15s; }
+    .btn-auth-owner:hover { background: #d97706; color: white; }
+    .btn-auth-logout { background: #dc2626; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.88rem; }
+
+    /* Kontrol Visibilitas Khusus Owner */
+    .owner-only { display: none !important; }
+    body.is-owner .owner-only { display: revert !important; }
+    body.is-owner .owner-only-flex { display: flex !important; }
+
+    /* Wrapper Konten */
+    .main-wrapper { max-width: 1280px; margin: 20px auto; padding: 0 20px; }
+    .view-section { display: none; }
+    .view-section.active { display: block; }
+
+    /* Layout Kasir */
+    .pos-grid { display: grid; grid-template-columns: 1.35fr 1.05fr; gap: 20px; }
+    .panel { background: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+    h2 { margin-top: 0; font-size: 1.15rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
+
+    /* Pencarian & Tombol Kategori */
+    .search-box { width: 100%; padding: 11px; font-size: 0.95rem; border: 2px solid #2563eb; border-radius: 8px; margin-bottom: 12px; }
+    .category-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .cat-btn { padding: 6px 13px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; border-radius: 20px; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: 0.15s; }
+    .cat-btn:hover { background: #e2e8f0; }
+    .cat-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+
+    /* Katalog Barang */
+    .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 11px; max-height: 62vh; overflow-y: auto; }
+    .product-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 11px; cursor: pointer; transition: 0.15s; background: #fafafa; }
+    .product-card:hover { border-color: #2563eb; background: #eff6ff; }
+    .product-card.out-of-stock { opacity: 0.5; cursor: not-allowed; background: #fee2e2; }
+    .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .barcode-tag { font-size: 0.72rem; color: #6b7280; font-family: monospace; }
+    .cat-badge { font-size: 0.7rem; background: #e0e7ff; color: #3730a3; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+    .price { font-weight: bold; color: #059669; margin-top: 6px; font-size: 1.02rem; }
+    .stock { font-size: 0.8rem; margin-top: 4px; font-weight: 600; color: #374151; }
+    .stock.low { color: #d97706; }
+    .stock.empty { color: #dc2626; }
+
+    /* Header Keranjang & Antrean Parkir (Hold) */
+    .cart-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 10px; }
+    .hold-actions { display: flex; gap: 6px; }
+    .btn-hold { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+    .btn-recall { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+
+    /* Keranjang & Diskon */
+    .cart-list { max-height: 28vh; overflow-y: auto; margin-bottom: 12px; }
+    .cart-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding: 8px 0; }
+    .qty-controls button { width: 26px; height: 26px; border: 1px solid #d1d5db; background: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .summary { background: #f8fafc; padding: 14px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.92rem; }
+    .discount-box { display: grid; grid-template-columns: 110px 1fr; gap: 6px; margin-bottom: 10px; align-items: center; }
+    .discount-box select, .discount-box input { margin: 0; padding: 7px; font-size: 0.9rem; }
+    .total-row { font-size: 1.25rem; font-weight: bold; color: #111827; border-top: 1px solid #cbd5e1; padding-top: 8px; margin-top: 4px; }
+    select, input[type="number"], input[type="text"], input[type="password"], input[type="date"], textarea { width: 100%; padding: 9px; margin-top: 4px; margin-bottom: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; }
+    .quick-cash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+    .quick-cash button { padding: 6px; font-size: 0.82rem; background: #e2e8f0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    .btn-pay { width: 100%; padding: 13px; background: #16a34a; color: white; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: bold; cursor: pointer; }
+    .btn-pay:hover { background: #15803d; }
+
+    /* Kelola Produk & Auto Barcode */
+    .manage-grid { display: grid; grid-template-columns: 1fr 2.4fr; gap: 20px; }
+    .barcode-input-group { display: flex; gap: 6px; margin-top: 4px; margin-bottom: 10px; }
+    .barcode-input-group input { margin: 0; flex: 1; }
+    .btn-gen-barcode { background: #334155; color: white; border: none; padding: 0 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+    .table-toolbar { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+    .table-toolbar input { margin: 0; flex: 1; }
+    .btn-filter-low { padding: 9px 14px; border: 1px solid #f59e0b; background: #fef3c7; color: #92400e; border-radius: 6px; font-weight: 600; cursor: pointer; white-space: nowrap; font-size: 0.85rem; }
+    .btn-filter-low.active { background: #d97706; color: white; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    th, td { text-align: left; padding: 8px 7px; border-bottom: 1px solid #e5e7eb; }
+    th { background: #f8fafc; font-weight: 600; }
+    .btn-sm { padding: 4px 7px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.76rem; font-weight: 600; }
+    .btn-stock { background: #dcfce7; color: #166534; }
+    .btn-opname { background: #fef3c7; color: #92400e; }
+    .btn-label { background: #f3e8ff; color: #6b21a8; }
+    .btn-edit { background: #dbeafe; color: #1d4ed8; }
+    .btn-del { background: #fee2e2; color: #b91c1c; }
+    .btn-void { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .btn-print-sm { background: #e0e7ff; color: #3730a3; }
+    .btn-primary { background: #2563eb; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; }
+    .btn-export { background: #059669; color: white; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+
+    /* Laporan Keuangan, Analitik & Kas Laci */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .stat-card { background: white; padding: 16px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); border-left: 4px solid #2563eb; }
+    .stat-card.green { border-left-color: #16a34a; }
+    .stat-card.amber { border-left-color: #d97706; }
+    .stat-card.purple { border-left-color: #7c3aed; }
+    .stat-card.teal { border-left-color: #0d9488; }
+    .stat-label { font-size: 0.82rem; color: #6b7280; margin-bottom: 5px; }
+    .stat-value { font-size: 1.3rem; font-weight: bold; color: #111827; }
+    .drawer-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .top-products-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .top-item-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; }
+    .row-voided { background: #fef2f2; color: #9ca3af; text-decoration: line-through; }
+    .badge-void { background: #dc2626; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-decoration: none; display: inline-block; }
+    .ref-code-tag { font-family: monospace; font-size: 0.75rem; background: #f1f5f9; padding: 2px 5px; border-radius: 4px; color: #334155; }
+
+    /* Pengaturan & Backup */
+    .settings-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; }
+    .section-divider { margin-top: 22px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+    .backup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .btn-backup { background: #0f172a; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer; text-align: center; font-size: 0.88rem; }
+    .btn-restore { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer; text-align: center; font-size: 0.88rem; display: block; }
+    .qris-preview-thumb { max-width: 150px; max-height: 150px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 4px; margin-top: 6px; display: block; }
+
+    /* Modal Umum, Verifikasi Non-Tunai, Struk & Label Rak */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65);
+      justify-content: center; align-items: center; z-index: 1000; padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+      background: #fff; padding: 22px; border-radius: 12px; max-width: 430px; width: 100%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto;
+    }
+    .verify-amount-banner {
+      background: #eff6ff; border: 2px solid #2563eb; border-radius: 8px; padding: 12px;
+      text-align: center; margin-bottom: 12px;
+    }
+    .verify-amount-banner .big-rp { font-size: 1.5rem; font-weight: 800; color: #1d4ed8; }
+    .qris-modal-img { max-width: 210px; max-height: 210px; margin: 8px auto; display: block; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px; }
+    .bank-info-box { background: #f8fafc; border: 1px dashed #94a3b8; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 12px; font-size: 0.9rem; }
+    .verify-warning { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 10px; font-size: 0.8rem; color: #991b1b; margin-bottom: 12px; }
+
+    /* Kertas Struk & Label Rak */
+    .receipt-paper {
+      width: 58mm; margin: 0 auto 16px auto; padding: 10px;
+      border: 1px dashed #9ca3af; background: #fff; color: #000;
+      font-family: 'Courier New', Courier, monospace; font-size: 12px; line-height: 1.4;
+      white-space: pre-line;
+    }
+    .receipt-paper * { font-family: 'Courier New', Courier, monospace; }
+    .shelf-label-paper {
+      width: 58mm; margin: 0 auto 16px auto; padding: 10px;
+      border: 2px solid #000; background: #fff; color: #000;
+      text-align: center;
+    }
+    .rec-center { text-align: center; }
+    .rec-divider { border-top: 1px dashed #000; margin: 6px 0; }
+    .rec-row { display: flex; justify-content: space-between; }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-print { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .btn-close { background: #e5e7eb; color: #1f2937; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .held-item { border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+    @media print {
+      body * { visibility: hidden; }
+      body.printing-receipt #receiptPrintArea, body.printing-receipt #receiptPrintArea * { visibility: visible; }
+      body.printing-receipt #receiptPrintArea {
+        position: fixed; left: 0; top: 0; width: 58mm; margin: 0; padding: 0; border: none;
+      }
+      body.printing-label #shelfLabelPrintArea, body.printing-label #shelfLabelPrintArea * { visibility: visible; }
+      body.printing-label #shelfLabelPrintArea {
+        position: fixed; left: 0; top: 0; width: 58mm; margin: 0; padding: 6px; border: 2px solid #000;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BAR NAVIGASI -->
+  <div class="navbar">
+    <div class="brand-area">
+      <h1 id="headerStoreName">TOKO RITEL MANDIRI</h1>
+      <span id="roleBadge" class="role-badge role-kasir">Mode Kasir</span>
+    </div>
+
+    <div class="nav-right">
+      <div class="nav-tabs">
+        <button class="nav-btn active" id="nav-btn-pos" onclick="switchTab('pos', this)">1. Kasir POS</button>
+        <button class="nav-btn" id="nav-btn-reports" onclick="switchTab('reports', this)">2. Riwayat, Kas & Analitik</button>
+        <button class="nav-btn owner-only" id="nav-btn-products" onclick="switchTab('products', this)">3. Kelola Produk</button>
+        <button class="nav-btn owner-only" id="nav-btn-settings" onclick="switchTab('settings', this)">4. Pengaturan & QRIS</button>
+      </div>
+
+      <button type="button" id="ownerLoginBtn" class="btn-auth-owner" onclick="openLoginModal()">Login Owner</button>
+      <button type="button" id="ownerLogoutBtn" class="btn-auth-logout" style="display:none;" onclick="logoutOwner()">Keluar Owner</button>
+    </div>
+  </div>
+
+  <div class="main-wrapper">
+    
+    <!-- ==================== TAB 1: KASIR POS ==================== -->
+    <div id="tab-pos" class="view-section active">
+      <div class="pos-grid">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding-bottom:10px; margin-bottom:12px;">
+            <h2 style="border:none; margin:0; padding:0;">Katalog Barang</h2>
+            <small style="color:#6b7280;">Pintasan: <strong>[F2]</strong> Scan • <strong>[F8]</strong> Bayar</small>
+          </div>
+          <input type="text" id="searchInput" class="search-box" placeholder="Scan barcode atau ketik nama barang..." autofocus>
+          <div id="categoryBar" class="category-bar"></div>
+          <div id="productGrid" class="product-grid"></div>
+        </div>
+
+        <div class="panel">
+          <div class="cart-header">
+            <h2 style="border:none; margin:0; padding:0;">Keranjang Transaksi</h2>
+            <div class="hold-actions">
+              <button type="button" class="btn-hold" onclick="holdCurrentCart()">Tahan Antrean</button>
+              <button type="button" class="btn-recall" id="recallBtn" onclick="openHeldModal()">Antrean (0)</button>
+            </div>
+          </div>
+
+          <div id="cartList" class="cart-list">
+            <p style="color: #6b7280; text-align: center;">Scan atau klik barang untuk mulai transaksi</p>
+          </div>
+
+          <div class="summary">
+            <div class="summary-row">
+              <span>Subtotal:</span>
+              <span id="subtotalDisplay">Rp 0</span>
+            </div>
+
+            <div class="discount-box">
+              <select id="discountType" onchange="renderCart()">
+                <option value="NOMINAL">Diskon (Rp)</option>
+                <option value="PERCENT">Diskon (%)</option>
+              </select>
+              <input type="number" id="discountValue" placeholder="0" min="0" oninput="renderCart()">
+            </div>
+
+            <div class="summary-row total-row">
+              <span>Total Bayar</span>
+              <span id="totalDisplay">Rp 0</span>
+            </div>
+
+            <label><strong>Metode Pembayaran:</strong></label>
+            <select id="paymentMethod">
+              <option value="TUNAI">Tunai (Cash)</option>
+              <option value="QRIS">QRIS (Wajib Verifikasi Masuk)</option>
+              <option value="TRANSFER">Transfer Bank (Wajib Verifikasi Masuk)</option>
+              <option value="CAMPURAN">Campuran (Tunai + QRIS/Transfer)</option>
+            </select>
+
+            <!-- PANEL INPUT TUNAI MURNI -->
+            <div id="cashSection">
+              <label><strong>Uang Diterima (Rp):</strong></label>
+              <input type="number" id="cashReceived" placeholder="0" min="0">
+              <div class="quick-cash">
+                <button type="button" onclick="setExactCash()">Uang Pas</button>
+                <button type="button" onclick="addCash(50000)">+50.000</button>
+                <button type="button" onclick="addCash(100000)">+100.000</button>
+              </div>
+              <div class="summary-row">
+                <span>Kembalian:</span>
+                <strong id="changeDisplay" style="color: #2563eb;">Rp 0</strong>
+              </div>
+            </div>
+
+            <!-- PANEL INPUT SPLIT PAYMENT (TUNAI + QRIS) -->
+            <div id="splitSection" style="display:none; background:#fff; padding:10px; border-radius:6px; border:1px solid #cbd5e1; margin-bottom:10px;">
+              <label><strong>Nominal Tunai Diterima (Rp):</strong></label>
+              <input type="number" id="splitCashInput" placeholder="Masukkan porsi uang tunai..." min="1" oninput="updateSplitSummary()">
+              <div class="summary-row" style="margin-bottom:0;">
+                <span>Sisa Wajib Masuk QRIS / Transfer:</span>
+                <strong id="splitNonCashDisplay" style="color:#d97706;">Rp 0</strong>
+              </div>
+            </div>
+
+            <button id="checkoutBtn" class="btn-pay">Proses Pembayaran [F8]</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 2: RIWAYAT, KAS LACI & ANALITIK ==================== -->
+    <div id="tab-reports" class="view-section">
+      
+      <!-- KARTU RINGKASAN OMZET, LABA & SALDO LACI TUNAI -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Omzet Bersih</div>
+          <div class="stat-value" id="repTotalRevenue">Rp 0</div>
+        </div>
+        <div class="stat-card green owner-only">
+          <div class="stat-label">Estimasi Laba Bersih (Owner)</div>
+          <div class="stat-value" id="repTotalProfit" style="color: #16a34a;">Rp 0</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-label">Pemasukan Tunai</div>
+          <div class="stat-value" id="repTotalCash">Rp 0</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-label">Pemasukan QRIS / Transfer</div>
+          <div class="stat-value" id="repTotalQris">Rp 0</div>
+        </div>
+        <div class="stat-card teal">
+          <div class="stat-label">Saldo Tunai di Laci Kasir</div>
+          <div class="stat-value" id="repDrawerBalance" style="color: #0d9488;">Rp 0</div>
+        </div>
+      </div>
+
+      <!-- ANALITIK TOP 5 BARANG TERLARIS (KHUSUS OWNER) -->
+      <div class="panel owner-only" style="margin-bottom: 18px;">
+        <h2 style="font-size:1rem; margin-bottom:10px;">Top 5 Barang Terlaris (Berdasarkan Filter Tanggal)</h2>
+        <div id="topProductsContainer" class="top-products-bar"></div>
+      </div>
+
+      <!-- PANEL KONTROL KAS LACI -->
+      <div class="drawer-box">
+        <div>
+          <strong>Manajemen Kas Laci Harian:</strong><br>
+          <small style="color:#475569;">
+            Modal Awal: <strong id="drawerOpeningText">Rp 0</strong> • 
+            Total Pengeluaran Kas Kecil: <strong id="drawerExpenseText" style="color:#dc2626;">Rp 0</strong>
+          </small>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn-sm btn-edit" onclick="setOpeningCash()">Atur Modal Awal Laci</button>
+          <button type="button" class="btn-sm btn-hold" onclick="openExpenseModal()">Catat Pengeluaran Kas</button>
+          <button type="button" class="btn-sm btn-print-sm" onclick="openExpenseListModal()">Lihat Pengeluaran (<span id="expenseCountBadge">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- TABEL RIWAYAT TRANSAKSI -->
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h2 style="border:none; margin:0; padding:0;">Riwayat Transaksi</h2>
+            <select id="reportDateFilter" style="width:auto; margin:0; padding:6px 10px; font-size:0.85rem;" onchange="renderReports()">
+              <option value="ALL">Semua Waktu</option>
+              <option value="TODAY">Hari Ini</option>
+              <option value="YESTERDAY">Kemarin</option>
+            </select>
+          </div>
+
+          <div class="owner-only-flex" style="display:none; gap:8px;">
+            <button class="btn-export" onclick="exportReportsToCSV()">Export ke CSV (Excel)</button>
+            <button class="btn-sm btn-del" onclick="clearAllHistory()">Tutup Buku / Reset Harian</button>
+          </div>
+        </div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID Transaksi</th>
+                <th>Waktu</th>
+                <th>Item Terjual</th>
+                <th>Diskon</th>
+                <th>Metode & Kode Ref</th>
+                <th>Total Omzet</th>
+                <th class="owner-only">Laba Bersih</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="reportTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 3: KELOLA PRODUK (KHUSUS OWNER) ==================== -->
+    <div id="tab-products" class="view-section">
+      <div class="manage-grid">
+        <div class="panel">
+          <h2 id="formTitle">Tambah Produk Baru</h2>
+          <form id="productForm">
+            <input type="hidden" id="editProductId">
+            
+            <label>Kode Barcode</label>
+            <div class="barcode-input-group">
+              <input type="text" id="prodBarcode" placeholder="Scan atau klik Auto..." required>
+              <button type="button" class="btn-gen-barcode" onclick="generateRandomBarcode()">Auto Barcode</button>
+            </div>
+            
+            <label>Nama Barang</label>
+            <input type="text" id="prodName" placeholder="Contoh: Kopi Kapal Api 165g" required>
+
+            <label>Jenis / Kategori Barang</label>
+            <input type="text" id="prodCategory" list="categorySuggestions" placeholder="Pilih atau ketik kategori..." required>
+            <datalist id="categorySuggestions">
+              <option value="Makanan">
+              <option value="Minuman">
+              <option value="Sabun">
+              <option value="Sembako">
+              <option value="Rokok & Lainnya">
+            </datalist>
+            
+            <label>Harga Modal (Rp)</label>
+            <input type="number" id="prodCost" placeholder="12000" min="0" required>
+            
+            <label>Harga Jual (Rp)</label>
+            <input type="number" id="prodSell" placeholder="15000" min="0" required>
+            
+            <label>Stok Tersedia (pcs)</label>
+            <input type="number" id="prodStock" placeholder="20" min="0" required>
+            
+            <button type="submit" class="btn-primary" id="saveProdBtn">Simpan Produk</button>
+            <button type="button" id="cancelEditBtn" style="display:none; width:100%; margin-top:8px; padding:8px; border:none; border-radius:6px; cursor:pointer;" onclick="resetProductForm()">Batal Edit</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h2>Daftar Stok Barang & Opname Rak</h2>
+          <div class="table-toolbar">
+            <input type="text" id="manageSearchInput" placeholder="Cari nama barang atau barcode di tabel..." oninput="renderProductTable()">
+            <button type="button" id="filterLowStockBtn" class="btn-filter-low" onclick="toggleLowStockFilter()">Stok Menipis (≤ 5)</button>
+          </div>
+
+          <div style="overflow-x: auto; max-height: 65vh;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Barcode</th>
+                  <th>Nama Barang</th>
+                  <th>Kategori</th>
+                  <th>Modal</th>
+                  <th>Jual</th>
+                  <th>Stok</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="productTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 4: PENGATURAN, QRIS STATIS & BACKUP ==================== -->
+    <div id="tab-settings" class="view-section">
+      <div class="settings-grid">
+        <div class="panel">
+          <h2>Identitas Toko, QRIS & Rekening Transfer</h2>
+          <form id="settingsForm">
+            <label>Nama Toko</label>
+            <input type="text" id="setStoreName" required>
+            <label>Alamat Toko</label>
+            <input type="text" id="setStoreAddress" required>
+            <label>Nomor Telepon / WhatsApp</label>
+            <input type="text" id="setStorePhone" required>
+            
+            <label>Rekening Bank Tujuan Transfer (Untuk Kasir & Pembeli)</label>
+            <input type="text" id="setBankAccount" placeholder="Contoh: BCA 1234567890 a.n. Budi Santoso">
+
+            <label>Upload Gambar Kode QRIS Statis Toko (Opsional)</label>
+            <input type="file" id="setQrisImageInput" accept="image/*" style="margin-bottom:6px;" onchange="handleQrisImageUpload(event)">
+            <div id="qrisThumbWrapper" style="margin-bottom:10px;"></div>
+
+            <label>Catatan Footer Struk</label>
+            <textarea id="setReceiptFooter" rows="3"></textarea>
+            <button type="submit" class="btn-primary">Simpan Pengaturan Toko & QRIS</button>
+          </form>
+
+          <div class="section-divider">
+            <h3 style="margin:0 0 8px 0; font-size:1rem;">Keamanan Mode Owner (SHA-256 & Auto-Lock 3 Menit)</h3>
+            <form id="changePasswordForm">
+              <label>Kata Sandi Baru Owner</label>
+              <input type="password" id="newOwnerPassword" placeholder="Minimal 4 karakter..." minlength="4" required>
+              <label>Konfirmasi Kata Sandi Baru</label>
+              <input type="password" id="confirmOwnerPassword" placeholder="Ketik ulang kata sandi baru..." minlength="4" required>
+              <button type="submit" class="btn-primary" style="background:#d97706;">Ubah Kata Sandi Owner</button>
+            </form>
+          </div>
+
+          <div class="section-divider">
+            <h3 style="margin:0 0 6px 0; font-size:1rem;">Cadangkan & Pulihkan Data (JSON)</h3>
+            <div class="backup-actions">
+              <button type="button" class="btn-backup" onclick="downloadBackupJSON()">Download Backup (.json)</button>
+              <label class="btn-restore">
+                Restore Data (.json)
+                <input type="file" accept=".json" style="display:none;" onchange="restoreBackupJSON(event)">
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Preview Header & Footer Struk</h2>
+          <div id="settingsPreviewBox" class="receipt-paper" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ==================== MODAL VERIFIKASI PEMBAYARAN QRIS / TRANSFER ==================== -->
+  <div id="paymentVerifyModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 420px;">
+      <h3 style="margin-top:0; font-size:1.1rem; color:#1e293b;" id="verifyModalTitle">Verifikasi Pembayaran Non-Tunai</h3>
+      
+      <div class="verify-amount-banner">
+        <div style="font-size:0.82rem; color:#475569;" id="verifyMethodSubtitle">Nominal Wajib Masuk ke Rekening / QRIS:</div>
+        <div class="big-rp" id="verifyTargetAmount">Rp 0</div>
+        <div id="verifySplitBreakdown" style="font-size:0.8rem; color:#059669; margin-top:4px; font-weight:600;"></div>
+      </div>
+
+      <!-- Area Tampilan Gambar QRIS / Info Rekening -->
+      <div id="verifyQrisDisplayArea" style="text-align:center;"></div>
+
+      <div class="verify-warning">
+        <strong>PROSEDUR KASIR:</strong> Pastikan notifikasi uang masuk sudah muncul di HP Merchant / M-Banking toko dengan nominal persis di atas sebelum menekan tombol konfirmasi!
+      </div>
+
+      <form id="verifyPaymentForm">
+        <label><strong>Masukkan 4–6 Digit Nomor Referensi / RRN Mutasi:</strong></label>
+        <input type="text" id="paymentRefInput" placeholder="Contoh: 849201 atau RRN mutasi..." minlength="3" required>
+        <div class="modal-actions" style="margin-top:10px;">
+          <button type="submit" class="btn-print" style="background:#16a34a;">Konfirmasi Uang Masuk</button>
+          <button type="button" class="btn-close" onclick="closePaymentVerifyModal()">Batal / Belum Masuk</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL LOGIN OWNER ==================== -->
+  <div id="loginModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 360px;">
+      <h3 style="margin-top:0; font-size:1.1rem;">Masuk ke Mode Owner</h3>
+      <p style="font-size:0.85rem; color:#6b7280; margin-top:0;">Mode Owner otomatis terkunci kembali jika tidak ada aktivitas selama 3 menit.</p>
+      <form id="ownerLoginForm">
+        <label>Kata Sandi Owner</label>
+        <input type="password" id="loginPasswordInput" placeholder="Default: admin123" required>
+        <div class="modal-actions" style="margin-top: 10px;">
+          <button type="submit" class="btn-print" style="background:#d97706;">Masuk Owner</button>
+          <button type="button" class="btn-close" onclick="closeLoginModal()">Batal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL CATAT PENGELUARAN KAS KECIL ==================== -->
+  <div id="expenseModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 380px;">
+      <h3 style="margin-top:0; font-size:1.05rem;">Catat Pengeluaran Kas Laci</h3>
+      <form id="expenseForm">
+        <label>Keterangan Pengeluaran</label>
+        <input type="text" id="expNote" placeholder="Contoh: Beli plastik kresek / galon" required>
+        <label>Nominal Keluar (Rp)</label>
+        <input type="number" id="expAmount" placeholder="15000" min="1" required>
+        <div class="modal-actions" style="margin-top:10px;">
+          <button type="submit" class="btn-print">Simpan</button>
+          <button type="button" class="btn-close" onclick="closeExpenseModal()">Batal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL DAFTAR PENGELUARAN KAS ==================== -->
+  <div id="expenseListModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="margin-top:0; font-size:1.05rem;">Rincian Pengeluaran Kas Kecil</h3>
+      <div id="expenseListContainer"></div>
+      <button class="btn-close" style="width:100%; margin-top:10px;" onclick="closeExpenseListModal()">Tutup</button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL PREVIEW STRUK BELANJA ==================== -->
+  <div id="receiptModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 340px;">
+      <h3 style="margin-top:0; text-align:center; font-size:1rem;">Preview Struk Belanja</h3>
+      <div id="receiptPrintArea" class="receipt-paper"></div>
+      <div class="modal-actions">
+        <button class="btn-print" onclick="printDocument('receipt')">Cetak Struk</button>
+        <button class="btn-close" onclick="closeReceiptModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL CETAK LABEL HARGA RAK ==================== -->
+  <div id="shelfLabelModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 340px;">
+      <h3 style="margin-top:0; text-align:center; font-size:1rem;">Preview Label Harga Rak</h3>
+      <div id="shelfLabelPrintArea" class="shelf-label-paper"></div>
+      <div class="modal-actions">
+        <button class="btn-print" onclick="printDocument('label')">Cetak Label Rak</button>
+        <button class="btn-close" onclick="closeShelfLabelModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL DAFTAR ANTREAN DITAHAN (HOLD) ==================== -->
+  <div id="heldModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="margin-top:0; font-size:1.05rem;">Daftar Antrean Ditahan</h3>
+      <div id="heldListContainer"></div>
+      <button class="btn-close" style="width:100%; margin-top:10px;" onclick="closeHeldModal()">Tutup</button>
+    </div>
+  </div>
+
+<script>
+  // =========================================================================
+  // 1. INISIALISASI DATA, QRIS TOKO, KAS LACI & KEAMANAN SHA-256
+  // =========================================================================
+  const defaultProducts = [
+    { id: "BRG-01", barcode: "8991001", name: "Indomie Goreng", category: "Makanan", costPrice: 2800, sellPrice: 3500, stock: 24 },
+    { id: "BRG-02", barcode: "8991002", name: "Chitato Sapi Panggang", category: "Makanan", costPrice: 8500, sellPrice: 10500, stock: 12 },
+    { id: "BRG-03", barcode: "8991003", name: "Aqua Botol 600ml", category: "Minuman", costPrice: 2500, sellPrice: 4000, stock: 15 },
+    { id: "BRG-04", barcode: "8991004", name: "Teh Botol Sosro 450ml", category: "Minuman", costPrice: 4200, sellPrice: 6000, stock: 18 },
+    { id: "BRG-05", barcode: "8991005", name: "Sabun Mandi Lifebuoy", category: "Sabun", costPrice: 18000, sellPrice: 23000, stock: 8 },
+    { id: "BRG-06", barcode: "8991006", name: "Detergen Rinso 770g", category: "Sabun", costPrice: 19500, sellPrice: 24000, stock: 4 },
+    { id: "BRG-07", barcode: "8991007", name: "Beras Ramos 5kg", category: "Sembako", costPrice: 65000, sellPrice: 72000, stock: 3 },
+    { id: "BRG-08", barcode: "8991008", name: "Minyak Goreng 1L", category: "Sembako", costPrice: 14500, sellPrice: 17000, stock: 10 }
+  ];
+
+  const defaultSettings = {
+    storeName: "TOKO RITEL MANDIRI",
+    storeAddress: "Jl. Raya Toko No. 12",
+    storePhone: "0812-3456-7890",
+    bankAccount: "BCA 1234567890 a.n. Toko Ritel Mandiri",
+    qrisImageDataUrl: "",
+    receiptFooter: "Terima Kasih\nBarang yang sudah dibeli\ntidak dapat ditukar"
+  };
+
+  let storedProducts = JSON.parse(localStorage.getItem("kasir_products"));
+  let products = storedProducts ? storedProducts.map(p => ({ ...p, category: p.category || "Umum" })) : defaultProducts;
+  let transactionHistory = JSON.parse(localStorage.getItem("kasir_transactions")) || [];
+  let storeSettings = { ...defaultSettings, ...(JSON.parse(localStorage.getItem("kasir_settings")) || {}) };
+  let heldCarts = JSON.parse(localStorage.getItem("kasir_held_carts")) || [];
+  let cashDrawer = JSON.parse(localStorage.getItem("kasir_drawer")) || { openingCash: 0, expenses: [] };
+
+  const DEFAULT_PASS_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // admin123
+  let ownerPasswordHash = localStorage.getItem("kasir_owner_pass_hash") || DEFAULT_PASS_HASH;
+  let isOwnerMode = false;
+  let idleTimer = null;
+  const OWNER_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+
+  let cart = [];
+  let activeCategory = "Semua";
+  let showOnlyLowStock = false;
+  let pendingNonCashOrder = null;
+
+  async function hashTextSHA256(text) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function saveDataToBrowser() {
+    localStorage.setItem("kasir_products", JSON.stringify(products));
+    localStorage.setItem("kasir_transactions", JSON.stringify(transactionHistory));
+    localStorage.setItem("kasir_settings", JSON.stringify(storeSettings));
+    localStorage.setItem("kasir_held_carts", JSON.stringify(heldCarts));
+    localStorage.setItem("kasir_drawer", JSON.stringify(cashDrawer));
+    localStorage.setItem("kasir_owner_pass_hash", ownerPasswordHash);
+  }
+
+  function applyStoreHeader() {
+    document.getElementById("headerStoreName").textContent = storeSettings.storeName;
+    document.title = `${storeSettings.storeName} - Kasir POS`;
+  }
+
+  const formatRupiah = (angka) => "Rp " + Math.round(angka).toLocaleString("id-ID");
+
+  // =========================================================================
+  // 2. SISTEM LOGIN, HASH SHA-256, AUTO-LOCK & PINTASAN KEYBOARD
+  // =========================================================================
+  function openLoginModal() {
+    document.getElementById("loginPasswordInput").value = "";
+    document.getElementById("loginModal").classList.add("show");
+    setTimeout(() => document.getElementById("loginPasswordInput").focus(), 100);
+  }
+
+  function closeLoginModal() {
+    document.getElementById("loginModal").classList.remove("show");
+    searchInput.focus();
+  }
+
+  document.getElementById("ownerLoginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const inputPass = document.getElementById("loginPasswordInput").value;
+    const inputHash = await hashTextSHA256(inputPass);
+
+    if (inputHash === ownerPasswordHash) {
+      setOwnerMode(true);
+      closeLoginModal();
+    } else {
+      alert("Kata sandi Owner salah!");
+      document.getElementById("loginPasswordInput").value = "";
+      document.getElementById("loginPasswordInput").focus();
+    }
+  });
+
+  function logoutOwner(isAuto = false) {
+    setOwnerMode(false);
+    switchTab("pos", document.getElementById("nav-btn-pos"));
+    if (isAuto) {
+      alert("Mode Owner terkunci otomatis karena tidak ada aktivitas selama 3 menit.");
+    }
+  }
+
+  function resetIdleTimer() {
+    if (!isOwnerMode) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => logoutOwner(true), OWNER_IDLE_TIMEOUT_MS);
+  }
+
+  ["mousemove", "keydown", "click"].forEach(evt => {
+    document.addEventListener(evt, resetIdleTimer);
+  });
+
+  function setOwnerMode(status) {
+    isOwnerMode = status;
+    const badge = document.getElementById("roleBadge");
+    const loginBtn = document.getElementById("ownerLoginBtn");
+    const logoutBtn = document.getElementById("ownerLogoutBtn");
+
+    if (isOwnerMode) {
+      document.body.classList.add("is-owner");
+      badge.textContent = "Mode Owner";
+      badge.className = "role-badge role-owner";
+      loginBtn.style.display = "none";
+      logoutBtn.style.display = "inline-block";
+      resetIdleTimer();
+    } else {
+      clearTimeout(idleTimer);
+      document.body.classList.remove("is-owner");
+      badge.textContent = "Mode Kasir";
+      badge.className = "role-badge role-kasir";
+      loginBtn.style.display = "inline-block";
+      logoutBtn.style.display = "none";
+    }
+
+    if (document.getElementById("tab-reports").classList.contains("active")) {
+      renderReports();
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F2") {
+      e.preventDefault();
+      switchTab("pos", document.getElementById("nav-btn-pos"));
+      searchInput.focus();
+      searchInput.select();
+    } else if (e.key === "F8") {
+      e.preventDefault();
+      if (document.getElementById("tab-pos").classList.contains("active")) {
+        document.getElementById("checkoutBtn").click();
+      }
+    }
+  });
+
+  // =========================================================================
+  // 3. NAVIGASI TAB
+  // =========================================================================
+  function switchTab(tabName, btnElement) {
+    if ((tabName === "products" || tabName === "settings") && !isOwnerMode) {
+      alert("Akses ditolak! Silakan Login Owner terlebih dahulu.");
+      return;
+    }
+
+    document.querySelectorAll(".view-section").forEach(el => el.classList.remove("active"));
+    document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.remove("active"));
+
+    document.getElementById("tab-" + tabName).classList.add("active");
+    btnElement.classList.add("active");
+
+    if (tabName === "pos") {
+      renderCategoryButtons();
+      renderProducts(searchInput.value);
+      updateRecallButton();
+      searchInput.focus();
+    } else if (tabName === "products") {
+      renderProductTable();
+    } else if (tabName === "reports") {
+      renderReports();
+    } else if (tabName === "settings") {
+      loadSettingsForm();
+    }
+  }
+
+  // =========================================================================
+  // 4. MODUL KASIR POS & SPLIT PAYMENT
+  // =========================================================================
+  const productGrid = document.getElementById("productGrid");
+  const categoryBar = document.getElementById("categoryBar");
+  const searchInput = document.getElementById("searchInput");
+  const cartList = document.getElementById("cartList");
+  const subtotalDisplay = document.getElementById("subtotalDisplay");
+  const totalDisplay = document.getElementById("totalDisplay");
+  const paymentMethod = document.getElementById("paymentMethod");
+  const cashSection = document.getElementById("cashSection");
+  const splitSection = document.getElementById("splitSection");
+  const cashReceived = document.getElementById("cashReceived");
+  const changeDisplay = document.getElementById("changeDisplay");
+
+  function renderCategoryButtons() {
+    const uniqueCategories = ["Semua", ...new Set(products.map(p => p.category))];
+    if (!uniqueCategories.includes(activeCategory)) activeCategory = "Semua";
+
+    categoryBar.innerHTML = "";
+    uniqueCategories.forEach(cat => {
+      const btn = document.createElement("button");
+      btn.className = `cat-btn ${activeCategory === cat ? "active" : ""}`;
+      const count = cat === "Semua" ? products.length : products.filter(p => p.category === cat).length;
+      btn.textContent = `${cat} (${count})`;
+      btn.onclick = () => {
+        activeCategory = cat;
+        renderCategoryButtons();
+        renderProducts(searchInput.value);
+      };
+      categoryBar.appendChild(btn);
+    });
+  }
+
+  function renderProducts(filterText = "") {
+    productGrid.innerHTML = "";
+    const keyword = filterText.toLowerCase();
+
+    const filtered = products.filter(p => {
+      const matchCategory = activeCategory === "Semua" || p.category === activeCategory;
+      const matchSearch = p.name.toLowerCase().includes(keyword) || p.barcode.includes(keyword);
+      return matchCategory && matchSearch;
+    });
+
+    if (filtered.length === 0) {
+      productGrid.innerHTML = `<p style="grid-column: 1/-1; text-align:center; color:#6b7280;">Tidak ada barang ditemukan.</p>`;
+      return;
+    }
+
+    filtered.forEach(product => {
+      const card = document.createElement("div");
+      const isOut = product.stock <= 0;
+      const isLow = product.stock > 0 && product.stock <= 5;
+
+      card.className = `product-card ${isOut ? "out-of-stock" : ""}`;
+      let stockClass = isOut ? "stock empty" : (isLow ? "stock low" : "stock");
+      let stockLabel = isOut ? "Stok Habis" : (isLow ? `Stok Menipis: ${product.stock}` : `Stok: ${product.stock}`);
+
+      card.innerHTML = `
+        <div class="card-top">
+          <span class="barcode-tag">#${product.barcode}</span>
+          <span class="cat-badge">${product.category}</span>
+        </div>
+        <div><strong>${product.name}</strong></div>
+        <div class="price">${formatRupiah(product.sellPrice)}</div>
+        <div class="${stockClass}">${stockLabel}</div>
+      `;
+
+      if (!isOut) card.onclick = () => addToCart(product.id);
+      productGrid.appendChild(card);
+    });
+  }
+
+  function addToCart(productId) {
+    const product = products.find(p => p.id === productId);
+    if (!product || product.stock <= 0) return;
+
+    const existing = cart.find(item => item.id === productId);
+    const currentQty = existing ? existing.qty : 0;
+
+    if (currentQty + 1 > product.stock) {
+      alert(`Stok "${product.name}" hanya tersisa ${product.stock}!`);
+      return;
+    }
+
+    if (existing) {
+      existing.qty += 1;
+    } else {
+      cart.push({
+        id: product.id,
+        name: product.name,
+        costPrice: product.costPrice,
+        sellPrice: product.sellPrice,
+        qty: 1
+      });
+    }
+    renderCart();
+  }
+
+  function updateQty(productId, delta) {
+    const index = cart.findIndex(item => item.id === productId);
+    if (index === -1) return;
+
+    const product = products.find(p => p.id === productId);
+    const newQty = cart[index].qty + delta;
+
+    if (newQty <= 0) {
+      cart.splice(index, 1);
+    } else if (newQty > product.stock) {
+      alert(`Maksimal stok tersedia: ${product.stock}`);
+      return;
+    } else {
+      cart[index].qty = newQty;
+    }
+    renderCart();
+  }
+
+  function getCalculationSummary() {
+    const subtotal = cart.reduce((sum, item) => sum + (item.sellPrice * item.qty), 0);
+    const discType = document.getElementById("discountType").value;
+    const discVal = parseFloat(document.getElementById("discountValue").value) || 0;
+
+    let discountAmount = 0;
+    if (discType === "PERCENT") {
+      const clampedPercent = Math.min(100, Math.max(0, discVal));
+      discountAmount = Math.round((subtotal * clampedPercent) / 100);
+    } else {
+      discountAmount = Math.min(subtotal, Math.max(0, discVal));
+    }
+
+    const grandTotal = Math.max(0, subtotal - discountAmount);
+    return { subtotal, discountAmount, grandTotal };
+  }
+
+  function renderCart() {
+    if (cart.length === 0) {
+      cartList.innerHTML = `<p style="color: #6b7280; text-align: center;">Scan atau klik barang untuk mulai transaksi</p>`;
+      subtotalDisplay.textContent = "Rp 0";
+      totalDisplay.textContent = "Rp 0";
+      calculateChange();
+      updateSplitSummary();
+      return;
+    }
+
+    cartList.innerHTML = "";
+    cart.forEach(item => {
+      const subtotal = item.sellPrice * item.qty;
+      const div = document.createElement("div");
+      div.className = "cart-item";
+      div.innerHTML = `
+        <div>
+          <strong>${item.name}</strong><br>
+          <small>${formatRupiah(item.sellPrice)} x ${item.qty} = <strong>${formatRupiah(subtotal)}</strong></small>
+        </div>
+        <div class="qty-controls">
+          <button onclick="updateQty('${item.id}', -1)">-</button>
+          <span style="margin: 0 8px; font-weight: bold;">${item.qty}</span>
+          <button onclick="updateQty('${item.id}', 1)">+</button>
+        </div>
+      `;
+      cartList.appendChild(div);
+    });
+
+    const { subtotal, grandTotal } = getCalculationSummary();
+    subtotalDisplay.textContent = formatRupiah(subtotal);
+    totalDisplay.textContent = formatRupiah(grandTotal);
+    calculateChange();
+    updateSplitSummary();
+  }
+
+  function setExactCash() {
+    cashReceived.value = getCalculationSummary().grandTotal;
+    calculateChange();
+  }
+
+  function addCash(amount) {
+    cashReceived.value = (parseInt(cashReceived.value) || 0) + amount;
+    calculateChange();
+  }
+
+  function calculateChange() {
+    const total = getCalculationSummary().grandTotal;
+    const received = parseInt(cashReceived.value) || 0;
+    const change = received - total;
+    changeDisplay.textContent = change >= 0 ? formatRupiah(change) : "Uang kurang";
+    changeDisplay.style.color = change >= 0 ? "#2563eb" : "#dc2626";
+  }
+
+  function updateSplitSummary() {
+    const total = getCalculationSummary().grandTotal;
+    const cashPart = parseInt(document.getElementById("splitCashInput").value) || 0;
+    const nonCashPart = Math.max(0, total - cashPart);
+    document.getElementById("splitNonCashDisplay").textContent = formatRupiah(nonCashPart);
+  }
+
+  function holdCurrentCart() {
+    if (cart.length === 0) return alert("Keranjang kosong, tidak ada antrean untuk ditahan.");
+    const note = prompt("Masukkan nama/catatan singkat pembeli (opsional):", `Pembeli #${heldCarts.length + 1}`);
+    if (note === null) return;
+
+    heldCarts.push({
+      id: Date.now(),
+      label: note.trim() || `Antrean #${heldCarts.length + 1}`,
+      time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+      items: JSON.parse(JSON.stringify(cart))
+    });
+
+    cart = [];
+    document.getElementById("discountValue").value = "";
+    saveDataToBrowser();
+    renderCart();
+    updateRecallButton();
+  }
+
+  function updateRecallButton() {
+    document.getElementById("recallBtn").textContent = `Antrean (${heldCarts.length})`;
+  }
+
+  function openHeldModal() {
+    const container = document.getElementById("heldListContainer");
+    if (heldCarts.length === 0) {
+      container.innerHTML = `<p style="color:#6b7280; text-align:center;">Tidak ada antrean yang ditahan.</p>`;
+    } else {
+      container.innerHTML = heldCarts.map((h, idx) => {
+        const total = h.items.reduce((s, i) => s + i.sellPrice * i.qty, 0);
+        return `
+          <div class="held-item">
+            <div>
+              <strong>${h.label}</strong> <small style="color:#6b7280;">(${h.time})</small><br>
+              <small>${h.items.length} jenis barang • <strong>${formatRupiah(total)}</strong></small>
+            </div>
+            <div style="display:flex; gap:5px;">
+              <button class="btn-sm btn-edit" onclick="recallHeldCart(${idx})">Panggil</button>
+              <button class="btn-sm btn-del" onclick="deleteHeldCart(${idx})">Hapus</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+    document.getElementById("heldModal").classList.add("show");
+  }
+
+  function closeHeldModal() {
+    document.getElementById("heldModal").classList.remove("show");
+  }
+
+  function recallHeldCart(index) {
+    if (cart.length > 0 && !confirm("Keranjang saat ini tidak kosong. Timpa dengan antrean yang dipanggil?")) return;
+    cart = heldCarts[index].items;
+    heldCarts.splice(index, 1);
+    saveDataToBrowser();
+    renderCart();
+    updateRecallButton();
+    closeHeldModal();
+  }
+
+  function deleteHeldCart(index) {
+    heldCarts.splice(index, 1);
+    saveDataToBrowser();
+    updateRecallButton();
+    openHeldModal();
+  }
+
+  paymentMethod.addEventListener("change", () => {
+    const val = paymentMethod.value;
+    cashSection.style.display = val === "TUNAI" ? "block" : "none";
+    splitSection.style.display = val === "CAMPURAN" ? "block" : "none";
+    if (val === "CAMPURAN") updateSplitSummary();
+  });
+
+  cashReceived.addEventListener("input", calculateChange);
+
+  searchInput.addEventListener("input", (e) => renderProducts(e.target.value));
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && searchInput.value.trim() !== "") {
+      const exactMatch = products.find(p => p.barcode === searchInput.value.trim());
+      if (exactMatch) {
+        addToCart(exactMatch.id);
+        searchInput.value = "";
+        renderProducts();
+      }
+    }
+  });
+
+  // =========================================================================
+  // 5. PROSEDUR CHECKOUT & VERIFIKASI PEMBAYARAN NON-TUNAI (QRIS / TRANSFER)
+  // =========================================================================
+  document.getElementById("checkoutBtn").addEventListener("click", () => {
+    if (cart.length === 0) return alert("Keranjang masih kosong!");
+
+    const { subtotal, discountAmount, grandTotal } = getCalculationSummary();
+    const method = paymentMethod.value;
+
+    // 1. Jika Tunai Murni: Langsung selesaikan transaksi
+    if (method === "TUNAI") {
+      const received = parseInt(cashReceived.value) || 0;
+      if (received < grandTotal) return alert("Uang tunai kurang dari total belanja!");
+      const change = received - grandTotal;
+
+      finalizeTransaction({
+        subtotal,
+        discountAmount,
+        grandTotal,
+        method: "TUNAI",
+        cashPart: grandTotal,
+        nonCashPart: 0,
+        cashReceived: received,
+        change,
+        refCode: ""
+      });
+      return;
+    }
+
+    // 2. Jika QRIS, Transfer Bank, atau Campuran: Wajib lewat Modal Verifikasi Mutasi Masuk!
+    let cashPart = 0;
+    let nonCashPart = grandTotal;
+
+    if (method === "CAMPURAN") {
+      cashPart = parseInt(document.getElementById("splitCashInput").value) || 0;
+      if (cashPart <= 0 || cashPart >= grandTotal) {
+        return alert("Untuk pembayaran campuran, nominal tunai harus lebih dari Rp 0 dan kurang dari Total Bayar!");
+      }
+      nonCashPart = grandTotal - cashPart;
+    }
+
+    pendingNonCashOrder = {
+      subtotal,
+      discountAmount,
+      grandTotal,
+      method,
+      cashPart,
+      nonCashPart
+    };
+
+    openPaymentVerifyModal(pendingNonCashOrder);
+  });
+
+  function openPaymentVerifyModal(order) {
+    document.getElementById("verifyModalTitle").textContent =
+      order.method === "TRANSFER" ? "Verifikasi Transfer Bank Masuk" :
+      order.method === "CAMPURAN" ? "Verifikasi Sisa Bayar QRIS / Transfer" :
+      "Verifikasi Pembayaran QRIS Masuk";
+
+    document.getElementById("verifyTargetAmount").textContent = formatRupiah(order.nonCashPart);
+    
+    const breakdownEl = document.getElementById("verifySplitBreakdown");
+    if (order.method === "CAMPURAN") {
+      breakdownEl.textContent = `Total Belanja ${formatRupiah(order.grandTotal)} (Tunai: ${formatRupiah(order.cashPart)} + Non-Tunai: ${formatRupiah(order.nonCashPart)})`;
+    } else {
+      breakdownEl.textContent = "";
+    }
+
+    const qrisDisplay = document.getElementById("verifyQrisDisplayArea");
+    let displayHtml = "";
+
+    if ((order.method === "QRIS" || order.method === "CAMPURAN") && storeSettings.qrisImageDataUrl) {
+      displayHtml += `<img src="${storeSettings.qrisImageDataUrl}" alt="QRIS Toko" class="qris-modal-img">`;
+    } else if (order.method === "QRIS") {
+      displayHtml += `<div class="bank-info-box" style="color:#6b7280;"><em>(Gambar QRIS belum diunggah di Pengaturan — tunjukkan stiker QRIS meja kasir ke pembeli)</em></div>`;
+    }
+
+    if (storeSettings.bankAccount) {
+      displayHtml += `<div class="bank-info-box"><strong>Rekening Transfer Toko:</strong><br>${storeSettings.bankAccount}</div>`;
+    }
+
+    qrisDisplay.innerHTML = displayHtml;
+    document.getElementById("paymentRefInput").value = "";
+    document.getElementById("paymentVerifyModal").classList.add("show");
+    setTimeout(() => document.getElementById("paymentRefInput").focus(), 100);
+  }
+
+  function closePaymentVerifyModal() {
+    pendingNonCashOrder = null;
+    document.getElementById("paymentVerifyModal").classList.remove("show");
+  }
+
+  document.getElementById("verifyPaymentForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!pendingNonCashOrder) return;
+
+    const refCode = document.getElementById("paymentRefInput").value.trim().toUpperCase();
+    if (refCode.length < 3) {
+      alert("Harap masukkan minimal 3 karakter Nomor Referensi / RRN dari notifikasi uang masuk!");
+      return;
+    }
+
+    const order = pendingNonCashOrder;
+    closePaymentVerifyModal();
+
+    finalizeTransaction({
+      subtotal: order.subtotal,
+      discountAmount: order.discountAmount,
+      grandTotal: order.grandTotal,
+      method: order.method,
+      cashPart: order.cashPart,
+      nonCashPart: order.nonCashPart,
+      cashReceived: order.cashPart,
+      change: 0,
+      refCode: refCode
+    });
+  });
+
+  function finalizeTransaction(data) {
+    cart.forEach(cartItem => {
+      const master = products.find(p => p.id === cartItem.id);
+      if (master) master.stock -= cartItem.qty;
+    });
+
+    const totalCost = cart.reduce((sum, item) => sum + (item.costPrice * item.qty), 0);
+
+    const newTransaction = {
+      id: "TRX-" + Date.now().toString().slice(-6),
+      timestamp: new Date().toISOString(),
+      items: JSON.parse(JSON.stringify(cart)),
+      subtotal: data.subtotal,
+      discountAmount: data.discountAmount,
+      totalRevenue: data.grandTotal,
+      totalProfit: data.grandTotal - totalCost,
+      paymentMethod: data.method,
+      cashAmount: data.cashPart,
+      nonCashAmount: data.nonCashPart,
+      cashReceived: data.cashReceived,
+      change: data.change,
+      refCode: data.refCode,
+      isVoided: false
+    };
+
+    transactionHistory.unshift(newTransaction);
+    saveDataToBrowser();
+
+    openReceiptModal(newTransaction);
+
+    cart = [];
+    cashReceived.value = "";
+    document.getElementById("splitCashInput").value = "";
+    document.getElementById("discountValue").value = "";
+    renderCart();
+    renderCategoryButtons();
+    renderProducts(searchInput.value);
+  }
+
+  // =========================================================================
+  // 6. PREVIEW & CETAK STRUK BELANJA + LABEL RAK
+  // =========================================================================
+  function openReceiptModal(trx) {
+    const printArea = document.getElementById("receiptPrintArea");
+    const dateStr = new Date(trx.timestamp).toLocaleString("id-ID", {
+      dateStyle: "short", timeStyle: "short"
+    });
+
+    const itemsHtml = trx.items.map(item => `
+      <div>${item.name}</div>
+      <div class="rec-row">
+        <span>${item.qty} x ${item.sellPrice.toLocaleString("id-ID")}</span>
+        <span>${(item.qty * item.sellPrice).toLocaleString("id-ID")}</span>
+      </div>
+    `).join("");
+
+    const discountHtml = trx.discountAmount > 0
+      ? `
+        <div class="rec-row"><span>Subtotal</span><span>${formatRupiah(trx.subtotal)}</span></div>
+        <div class="rec-row"><span>Diskon</span><span>-${formatRupiah(trx.discountAmount)}</span></div>
+      `
+      : "";
+
+    let paymentDetailHtml = "";
+    if (trx.paymentMethod === "TUNAI") {
+      paymentDetailHtml = `
+        <div class="rec-row"><span>Tunai</span><span>${formatRupiah(trx.cashReceived)}</span></div>
+        <div class="rec-row"><span>Kembali</span><span>${formatRupiah(trx.change)}</span></div>
+      `;
+    } else if (trx.paymentMethod === "CAMPURAN") {
+      paymentDetailHtml = `
+        <div class="rec-row"><span>Tunai</span><span>${formatRupiah(trx.cashAmount)}</span></div>
+        <div class="rec-row"><span>QRIS/Trf</span><span>${formatRupiah(trx.nonCashAmount)}</span></div>
+        <div>Ref: ${trx.refCode} (VERIFIED)</div>
+      `;
+    } else {
+      paymentDetailHtml = `
+        <div class="rec-row"><span>Bayar (${trx.paymentMethod})</span><span>LUNAS</span></div>
+        <div>Ref: ${trx.refCode} (VERIFIED)</div>
+      `;
+    }
+
+    const voidBanner = trx.isVoided ? `<div class="rec-center"><strong>*** TRANSAKSI BATAL (VOID) ***</strong></div><div class="rec-divider"></div>` : "";
+
+    printArea.innerHTML = `
+      ${voidBanner}
+      <div class="rec-center">
+        <strong>${storeSettings.storeName}</strong><br>
+        ${storeSettings.storeAddress}<br>
+        Telp: ${storeSettings.storePhone}
+      </div>
+      <div class="rec-divider"></div>
+      <div>No: ${trx.id}</div>
+      <div>Tgl: ${dateStr}</div>
+      <div class="rec-divider"></div>
+      ${itemsHtml}
+      <div class="rec-divider"></div>
+      ${discountHtml}
+      <div class="rec-row"><strong>TOTAL</strong><strong>${formatRupiah(trx.totalRevenue)}</strong></div>
+      ${paymentDetailHtml}
+      <div class="rec-divider"></div>
+      <div class="rec-center">${storeSettings.receiptFooter}</div>
+    `;
+
+    document.getElementById("receiptModal").classList.add("show");
+  }
+
+  function closeReceiptModal() {
+    document.getElementById("receiptModal").classList.remove("show");
+    searchInput.focus();
+  }
+
+  function openShelfLabelModal(productId) {
+    const p = products.find(item => item.id === productId);
+    if (!p) return;
+
+    document.getElementById("shelfLabelPrintArea").innerHTML = `
+      <div style="font-size:0.75rem; font-weight:bold; border-bottom:1px solid #000; padding-bottom:3px; margin-bottom:5px;">
+        ${storeSettings.storeName}
+      </div>
+      <div style="font-size:0.95rem; font-weight:bold; margin-bottom:4px;">${p.name}</div>
+      <div style="font-size:1.35rem; font-weight:900; margin:6px 0;">${formatRupiah(p.sellPrice)}</div>
+      <div style="font-family:monospace; font-size:0.85rem; letter-spacing:2px; border-top:1px dashed #000; padding-top:4px;">
+        *${p.barcode}*
+      </div>
+    `;
+    document.getElementById("shelfLabelModal").classList.add("show");
+  }
+
+  function closeShelfLabelModal() {
+    document.getElementById("shelfLabelModal").classList.remove("show");
+  }
+
+  function printDocument(type) {
+    document.body.classList.remove("printing-receipt", "printing-label");
+    document.body.classList.add(type === "label" ? "printing-label" : "printing-receipt");
+    window.print();
+  }
+
+  // =========================================================================
+  // 7. MODUL KELOLA PRODUK, STOK OPNAME & AUTO BARCODE (KHUSUS OWNER)
+  // =========================================================================
+  const productForm = document.getElementById("productForm");
+
+  function generateRandomBarcode() {
+    let generated = "";
+    do {
+      const randomDigits = Math.floor(100000 + Math.random() * 900000);
+      generated = "899" + randomDigits;
+    } while (products.some(p => p.barcode === generated));
+    document.getElementById("prodBarcode").value = generated;
+  }
+
+  function toggleLowStockFilter() {
+    showOnlyLowStock = !showOnlyLowStock;
+    document.getElementById("filterLowStockBtn").classList.toggle("active", showOnlyLowStock);
+    renderProductTable();
+  }
+
+  function renderProductTable() {
+    const tbody = document.getElementById("productTableBody");
+    const keyword = document.getElementById("manageSearchInput").value.toLowerCase();
+    tbody.innerHTML = "";
+
+    const filtered = products.filter(p => {
+      const matchText = p.name.toLowerCase().includes(keyword) || p.barcode.includes(keyword) || p.category.toLowerCase().includes(keyword);
+      const matchLow = !showOnlyLowStock || p.stock <= 5;
+      return matchText && matchLow;
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#6b7280;">Tidak ada produk yang cocok.</td></tr>`;
+      return;
+    }
+
+    filtered.forEach(p => {
+      const tr = document.createElement("tr");
+      const stockStyle = p.stock <= 5 ? "color:#dc2626; font-weight:bold;" : "font-weight:bold;";
+      tr.innerHTML = `
+        <td><code>${p.barcode}</code></td>
+        <td><strong>${p.name}</strong></td>
+        <td><span class="cat-badge">${p.category}</span></td>
+        <td>${formatRupiah(p.costPrice)}</td>
+        <td>${formatRupiah(p.sellPrice)}</td>
+        <td style="${stockStyle}">${p.stock}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn-sm btn-stock" onclick="quickAddStock('${p.id}')" title="Tambah Stok Masuk">+Stok</button>
+          <button class="btn-sm btn-opname" onclick="stockOpname('${p.id}')" title="Sesuaikan Stok Fisik Rak">Opname</button>
+          <button class="btn-sm btn-label" onclick="openShelfLabelModal('${p.id}')" title="Cetak Label Harga Rak">Label</button>
+          <button class="btn-sm btn-edit" onclick="editProduct('${p.id}')">Edit</button>
+          <button class="btn-sm btn-del" onclick="deleteProduct('${p.id}')">Hapus</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function quickAddStock(id) {
+    const p = products.find(item => item.id === id);
+    if (!p) return;
+    const addQty = parseInt(prompt(`Tambah stok masuk untuk "${p.name}" (Stok saat ini: ${p.stock}):`, "10"));
+    if (!isNaN(addQty) && addQty > 0) {
+      p.stock += addQty;
+      saveDataToBrowser();
+      renderProductTable();
+    }
+  }
+
+  function stockOpname(id) {
+    const p = products.find(item => item.id === id);
+    if (!p) return;
+    const val = prompt(`STOK OPNAME "${p.name}"\nStok tercatat di sistem: ${p.stock} pcs\n\nMasukkan jumlah stok fisik asli di rak:`, p.stock);
+    if (val === null) return;
+    const actualStock = parseInt(val);
+    if (!isNaN(actualStock) && actualStock >= 0) {
+      const diff = actualStock - p.stock;
+      p.stock = actualStock;
+      saveDataToBrowser();
+      renderProductTable();
+      alert(`Stok "${p.name}" disesuaikan menjadi ${actualStock} pcs (Selisih: ${diff >= 0 ? "+" + diff : diff}).`);
+    }
+  }
+
+  productForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!isOwnerMode) return;
+
+    const editId = document.getElementById("editProductId").value;
+    const barcode = document.getElementById("prodBarcode").value.trim();
+    const name = document.getElementById("prodName").value.trim();
+    const category = document.getElementById("prodCategory").value.trim();
+    const costPrice = parseInt(document.getElementById("prodCost").value);
+    const sellPrice = parseInt(document.getElementById("prodSell").value);
+    const stock = parseInt(document.getElementById("prodStock").value);
+
+    const duplicateBarcode = products.find(p => p.barcode === barcode && p.id !== editId);
+    if (duplicateBarcode) {
+      alert(`Gagal! Kode barcode "${barcode}" sudah digunakan oleh barang "${duplicateBarcode.name}".`);
+      return;
+    }
+
+    if (editId) {
+      const index = products.findIndex(p => p.id === editId);
+      if (index !== -1) {
+        products[index] = { id: editId, barcode, name, category, costPrice, sellPrice, stock };
+      }
+    } else {
+      products.push({
+        id: "BRG-" + Date.now().toString().slice(-5),
+        barcode,
+        name,
+        category,
+        costPrice,
+        sellPrice,
+        stock
+      });
+    }
+
+    saveDataToBrowser();
+    resetProductForm();
+    renderProductTable();
+    alert("Data produk berhasil disimpan!");
+  });
+
+  function editProduct(id) {
+    const p = products.find(item => item.id === id);
+    if (!p) return;
+
+    document.getElementById("formTitle").textContent = "Edit Produk";
+    document.getElementById("editProductId").value = p.id;
+    document.getElementById("prodBarcode").value = p.barcode;
+    document.getElementById("prodName").value = p.name;
+    document.getElementById("prodCategory").value = p.category;
+    document.getElementById("prodCost").value = p.costPrice;
+    document.getElementById("prodSell").value = p.sellPrice;
+    document.getElementById("prodStock").value = p.stock;
+
+    document.getElementById("saveProdBtn").textContent = "Update Produk";
+    document.getElementById("cancelEditBtn").style.display = "block";
+  }
+
+  function resetProductForm() {
+    productForm.reset();
+    document.getElementById("editProductId").value = "";
+    document.getElementById("formTitle").textContent = "Tambah Produk Baru";
+    document.getElementById("saveProdBtn").textContent = "Simpan Produk";
+    document.getElementById("cancelEditBtn").style.display = "none";
+  }
+
+  function deleteProduct(id) {
+    if (!confirm("Yakin ingin menghapus barang ini dari katalog?")) return;
+    products = products.filter(p => p.id !== id);
+    saveDataToBrowser();
+    renderProductTable();
+  }
+
+  // =========================================================================
+  // 8. MODUL LAPORAN, ANALITIK TERLARIS, VOID & KAS LACI
+  // =========================================================================
+  function setOpeningCash() {
+    const val = prompt("Masukkan jumlah Modal Awal Uang Tunai di Laci Kasir (Rp):", cashDrawer.openingCash);
+    if (val === null) return;
+    const parsed = parseInt(val);
+    if (!isNaN(parsed) && parsed >= 0) {
+      cashDrawer.openingCash = parsed;
+      saveDataToBrowser();
+      renderReports();
+    }
+  }
+
+  function openExpenseModal() {
+    document.getElementById("expenseForm").reset();
+    document.getElementById("expenseModal").classList.add("show");
+  }
+
+  function closeExpenseModal() {
+    document.getElementById("expenseModal").classList.remove("show");
+  }
+
+  document.getElementById("expenseForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const note = document.getElementById("expNote").value.trim();
+    const amount = parseInt(document.getElementById("expAmount").value) || 0;
+    if (amount <= 0) return;
+
+    cashDrawer.expenses.unshift({
+      id: Date.now(),
+      time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+      note,
+      amount
+    });
+
+    saveDataToBrowser();
+    closeExpenseModal();
+    renderReports();
+  });
+
+  function openExpenseListModal() {
+    const container = document.getElementById("expenseListContainer");
+    if (cashDrawer.expenses.length === 0) {
+      container.innerHTML = `<p style="color:#6b7280; text-align:center;">Belum ada pengeluaran kas kecil hari ini.</p>`;
+    } else {
+      container.innerHTML = cashDrawer.expenses.map((exp, idx) => `
+        <div class="held-item">
+          <div>
+            <strong>${exp.note}</strong> <small style="color:#6b7280;">(${exp.time})</small><br>
+            <strong style="color:#dc2626;">-${formatRupiah(exp.amount)}</strong>
+          </div>
+          ${isOwnerMode ? `<button class="btn-sm btn-del" onclick="deleteExpense(${idx})">Hapus</button>` : ""}
+        </div>
+      `).join("");
+    }
+    document.getElementById("expenseListModal").classList.add("show");
+  }
+
+  function closeExpenseListModal() {
+    document.getElementById("expenseListModal").classList.remove("show");
+  }
+
+  function deleteExpense(idx) {
+    if (!isOwnerMode) return;
+    cashDrawer.expenses.splice(idx, 1);
+    saveDataToBrowser();
+    renderReports();
+    openExpenseListModal();
+  }
+
+  function voidTransactionById(trxId) {
+    if (!isOwnerMode) return;
+    const trx = transactionHistory.find(t => t.id === trxId);
+    if (!trx || trx.isVoided) return;
+
+    if (!confirm(`Batalkan (VOID) transaksi ${trx.id} senilai ${formatRupiah(trx.totalRevenue)}?\n\nStok seluruh barang di transaksi ini akan otomatis dikembalikan ke katalog.`)) {
+      return;
+    }
+
+    trx.items.forEach(item => {
+      const masterProduct = products.find(p => p.id === item.id);
+      if (masterProduct) {
+        masterProduct.stock += item.qty;
+      }
+    });
+
+    trx.isVoided = true;
+    saveDataToBrowser();
+    renderReports();
+    alert(`Transaksi ${trx.id} telah dibatalkan dan stok barang berhasil dikembalikan.`);
+  }
+
+  function getFilteredTransactions() {
+    const filter = document.getElementById("reportDateFilter").value;
+    if (filter === "ALL") return transactionHistory;
+
+    const now = new Date();
+    const todayStr = now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayStr = yesterday.toDateString();
+
+    return transactionHistory.filter(trx => {
+      const dStr = new Date(trx.timestamp).toDateString();
+      if (filter === "TODAY") return dStr === todayStr;
+      if (filter === "YESTERDAY") return dStr === yesterdayStr;
+      return true;
+    });
+  }
+
+  function renderReports() {
+    const filteredList = getFilteredTransactions();
+    let totalRevenue = 0;
+    let totalProfit = 0;
+    let totalCash = 0;
+    let totalNonCash = 0;
+
+    const productSalesMap = {};
+    const tbody = document.getElementById("reportTableBody");
+    tbody.innerHTML = "";
+
+    filteredList.forEach(trx => {
+      if (!trx.isVoided) {
+        totalRevenue += trx.totalRevenue;
+        totalProfit += trx.totalProfit;
+
+        if (trx.paymentMethod === "TUNAI") {
+          totalCash += trx.totalRevenue;
+        } else if (trx.paymentMethod === "CAMPURAN") {
+          totalCash += (trx.cashAmount || 0);
+          totalNonCash += (trx.nonCashAmount || 0);
+        } else {
+          totalNonCash += trx.totalRevenue;
+        }
+
+        // Hitung agregasi barang terlaris
+        trx.items.forEach(item => {
+          if (!productSalesMap[item.name]) {
+            productSalesMap[item.name] = { name: item.name, qty: 0, revenue: 0 };
+          }
+          productSalesMap[item.name].qty += item.qty;
+          productSalesMap[item.name].revenue += (item.sellPrice * item.qty);
+        });
+      }
+
+      const timeFormatted = new Date(trx.timestamp).toLocaleString("id-ID", {
+        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"
+      });
+      const itemSummary = trx.items.map(i => `${i.name} (${i.qty}x)`).join(", ");
+      const discText = trx.discountAmount > 0 ? `-${formatRupiah(trx.discountAmount)}` : "-";
+      const voidBadge = trx.isVoided ? ` <span class="badge-void">VOID</span>` : "";
+      const refBadge = trx.refCode ? `<br><span class="ref-code-tag">Ref: ${trx.refCode}</span>` : "";
+
+      const voidBtnHtml = (isOwnerMode && !trx.isVoided)
+        ? `<button class="btn-sm btn-void" onclick="voidTransactionById('${trx.id}')">Void</button>`
+        : "";
+
+      const tr = document.createElement("tr");
+      if (trx.isVoided) tr.className = "row-voided";
+
+      tr.innerHTML = `
+        <td><strong>${trx.id}</strong>${voidBadge}</td>
+        <td>${timeFormatted}</td>
+        <td>${itemSummary}</td>
+        <td>${discText}</td>
+        <td><strong>${trx.paymentMethod}</strong>${refBadge}</td>
+        <td><strong>${formatRupiah(trx.totalRevenue)}</strong></td>
+        <td class="owner-only" style="color: #16a34a; font-weight: bold;">+${formatRupiah(trx.totalProfit)}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn-sm btn-print-sm" onclick="reprintReceiptById('${trx.id}')">Struk</button>
+          ${voidBtnHtml}
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if (filteredList.length === 0) {
+      const colSpan = isOwnerMode ? 8 : 7;
+      tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center; color:#6b7280;">Belum ada transaksi pada periode ini</td></tr>`;
+    }
+
+    // Render Top 5 Barang Terlaris
+    const topContainer = document.getElementById("topProductsContainer");
+    const sortedTop = Object.values(productSalesMap).sort((a, b) => b.qty - a.qty).slice(0, 5);
+    if (sortedTop.length === 0) {
+      topContainer.innerHTML = `<div style="color:#6b7280; font-size:0.85rem;">Belum ada data penjualan barang.</div>`;
+    } else {
+      topContainer.innerHTML = sortedTop.map((item, idx) => `
+        <div class="top-item-card">
+          <div style="font-size:0.75rem; color:#b45309; font-weight:bold;">Peringkat #${idx + 1}</div>
+          <div style="font-weight:bold; margin:2px 0;">${item.name}</div>
+          <div style="font-size:0.82rem; color:#374151;">Terjual: <strong>${item.qty} pcs</strong> (${formatRupiah(item.revenue)})</div>
+        </div>
+      `).join("");
+    }
+
+    const totalExpenses = cashDrawer.expenses.reduce((sum, e) => sum + e.amount, 0);
+    const expectedDrawerCash = cashDrawer.openingCash + totalCash - totalExpenses;
+
+    document.getElementById("repTotalRevenue").textContent = formatRupiah(totalRevenue);
+    document.getElementById("repTotalProfit").textContent = formatRupiah(totalProfit);
+    document.getElementById("repTotalCash").textContent = formatRupiah(totalCash);
+    document.getElementById("repTotalQris").textContent = formatRupiah(totalNonCash);
+    document.getElementById("repDrawerBalance").textContent = formatRupiah(expectedDrawerCash);
+
+    document.getElementById("drawerOpeningText").textContent = formatRupiah(cashDrawer.openingCash);
+    document.getElementById("drawerExpenseText").textContent = formatRupiah(totalExpenses);
+    document.getElementById("expenseCountBadge").textContent = cashDrawer.expenses.length;
+  }
+
+  function exportReportsToCSV() {
+    if (!isOwnerMode) return;
+    if (transactionHistory.length === 0) return alert("Belum ada data transaksi untuk di-export.");
+
+    const headers = ["ID Transaksi", "Status", "Tanggal & Waktu", "Item Terjual", "Subtotal", "Diskon", "Total Omzet", "Laba Bersih", "Metode Bayar", "Kode Ref Mutasi"];
+    const rows = transactionHistory.map(trx => {
+      const status = trx.isVoided ? "VOID / BATAL" : "VALID";
+      const waktu = new Date(trx.timestamp).toLocaleString("id-ID");
+      const items = trx.items.map(i => `${i.name} (${i.qty}x)`).join("; ");
+      return [
+        trx.id,
+        status,
+        `"${waktu}"`,
+        `"${items}"`,
+        trx.subtotal || trx.totalRevenue,
+        trx.discountAmount || 0,
+        trx.isVoided ? 0 : trx.totalRevenue,
+        trx.isVoided ? 0 : trx.totalProfit,
+        trx.paymentMethod,
+        `"${trx.refCode || "-"}"`
+      ].join(",");
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Laporan_Kasir_${today}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function reprintReceiptById(trxId) {
+    const trx = transactionHistory.find(t => t.id === trxId);
+    if (trx) openReceiptModal(trx);
+  }
+
+  function clearAllHistory() {
+    if (!isOwnerMode) return;
+    if (confirm("Tutup buku harian akan mereset Riwayat Transaksi, Modal Awal Laci, dan Pengeluaran Kas Kecil. Lanjutkan?")) {
+      transactionHistory = [];
+      cashDrawer = { openingCash: 0, expenses: [] };
+      saveDataToBrowser();
+      renderReports();
+    }
+  }
+
+  // =========================================================================
+  // 9. MODUL PENGATURAN, UPLOAD GAMBAR QRIS, PASSWORD SHA-256 & BACKUP
+  // =========================================================================
+  function loadSettingsForm() {
+    document.getElementById("setStoreName").value = storeSettings.storeName;
+    document.getElementById("setStoreAddress").value = storeSettings.storeAddress;
+    document.getElementById("setStorePhone").value = storeSettings.storePhone;
+    document.getElementById("setBankAccount").value = storeSettings.bankAccount || "";
+    document.getElementById("setReceiptFooter").value = storeSettings.receiptFooter;
+    renderQrisThumbnail();
+    updateSettingsPreview();
+  }
+
+  function renderQrisThumbnail() {
+    const wrapper = document.getElementById("qrisThumbWrapper");
+    if (storeSettings.qrisImageDataUrl) {
+      wrapper.innerHTML = `
+        <img src="${storeSettings.qrisImageDataUrl}" class="qris-preview-thumb" alt="QRIS Toko">
+        <button type="button" class="btn-sm btn-del" style="margin-top:4px;" onclick="removeQrisImage()">Hapus Gambar QRIS</button>
+      `;
+    } else {
+      wrapper.innerHTML = `<small style="color:#6b7280;">Belum ada gambar QRIS diunggah.</small>`;
+    }
+  }
+
+  function handleQrisImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      // Kompres gambar QRIS lewat Canvas agar ringan di localStorage
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement("canvas");
+        const maxSize = 360;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round((h * maxSize) / w); w = maxSize; }
+          else { w = Math.round((w * maxSize) / h); h = maxSize; }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        storeSettings.qrisImageDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        renderQrisThumbnail();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeQrisImage() {
+    storeSettings.qrisImageDataUrl = "";
+    document.getElementById("setQrisImageInput").value = "";
+    renderQrisThumbnail();
+  }
+
+  function updateSettingsPreview() {
+    const name = document.getElementById("setStoreName").value || storeSettings.storeName;
+    const addr = document.getElementById("setStoreAddress").value || storeSettings.storeAddress;
+    const phone = document.getElementById("setStorePhone").value || storeSettings.storePhone;
+    const footer = document.getElementById("setReceiptFooter").value || storeSettings.receiptFooter;
+
+    document.getElementById("settingsPreviewBox").innerHTML = `
+      <div class="rec-center">
+        <strong>${name}</strong><br>
+        ${addr}<br>
+        Telp: ${phone}
+      </div>
+      <div class="rec-divider"></div>
+      <div class="rec-row"><span>Contoh Barang x 1</span><span>10.000</span></div>
+      <div class="rec-divider"></div>
+      <div class="rec-center">${footer}</div>
+    `;
+  }
+
+  ["setStoreName", "setStoreAddress", "setStorePhone", "setReceiptFooter"].forEach(id => {
+    document.getElementById(id).addEventListener("input", updateSettingsPreview);
+  });
+
+  document.getElementById("settingsForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!isOwnerMode) return;
+
+    storeSettings = {
+      ...storeSettings,
+      storeName: document.getElementById("setStoreName").value.trim(),
+      storeAddress: document.getElementById("setStoreAddress").value.trim(),
+      storePhone: document.getElementById("setStorePhone").value.trim(),
+      bankAccount: document.getElementById("setBankAccount").value.trim(),
+      receiptFooter: document.getElementById("setReceiptFooter").value.trim()
+    };
+
+    saveDataToBrowser();
+    applyStoreHeader();
+    alert("Pengaturan toko & QRIS berhasil disimpan!");
+  });
+
+  document.getElementById("changePasswordForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!isOwnerMode) return;
+
+    const newPass = document.getElementById("newOwnerPassword").value;
+    const confirmPass = document.getElementById("confirmOwnerPassword").value;
+
+    if (newPass !== confirmPass) {
+      alert("Konfirmasi kata sandi tidak cocok!");
+      return;
+    }
+
+    ownerPasswordHash = await hashTextSHA256(newPass);
+    saveDataToBrowser();
+    document.getElementById("changePasswordForm").reset();
+    alert("Kata sandi Owner berhasil diperbarui dan dienkripsi!");
+  });
+
+  function downloadBackupJSON() {
+    if (!isOwnerMode) return;
+    const backupPayload = {
+      exportedAt: new Date().toISOString(),
+      storeSettings,
+      products,
+      transactionHistory,
+      cashDrawer
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupPayload, null, 2));
+    const link = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+    link.setAttribute("href", dataStr);
+    link.setAttribute("download", `Backup_Kasir_${today}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function restoreBackupJSON(event) {
+    if (!isOwnerMode) return;
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!Array.isArray(data.products) || !Array.isArray(data.transactionHistory)) {
+          throw new Error("Format file backup tidak valid.");
+        }
+        if (!confirm(`Pulihkan data dari backup tanggal ${data.exportedAt || "ini"}? Data saat ini akan ditimpa.`)) return;
+
+        products = data.products;
+        transactionHistory = data.transactionHistory;
+        if (data.storeSettings) storeSettings = { ...defaultSettings, ...data.storeSettings };
+        if (data.cashDrawer) cashDrawer = data.cashDrawer;
+
+        saveDataToBrowser();
+        applyStoreHeader();
+        loadSettingsForm();
+        alert("Seluruh data berhasil dipulihkan!");
+      } catch (err) {
+        alert("Gagal membaca file backup: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // Inisialisasi Awal
+  applyStoreHeader();
+  setOwnerMode(false);
+  renderCategoryButtons();
+  renderProducts();
+  updateRecallButton();
+</script>
+
+</body>
+</html>
