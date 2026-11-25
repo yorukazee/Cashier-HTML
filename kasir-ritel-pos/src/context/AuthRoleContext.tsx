@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { supabase } from '../db/supabaseClient';
 
-const DEFAULT_PASS_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'; // admin123
+export const DEFAULT_PASS_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'; // admin123
 const OWNER_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
-async function hashTextSHA256(text: string): Promise<string> {
+export async function hashTextSHA256(text: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(text);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -22,11 +23,18 @@ interface AuthRoleContextType {
 
 const AuthRoleContext = createContext<AuthRoleContextType | undefined>(undefined);
 
-export const AuthRoleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthRoleProvider: React.FC<{ children: React.ReactNode; initialHash?: string }> = ({
+  children,
+  initialHash
+}) => {
   const [isOwnerMode, setIsOwnerMode] = useState(false);
-  const [passwordHash, setPasswordHash] = useState<string>(
-    () => localStorage.getItem('kasir_owner_pass_hash') || DEFAULT_PASS_HASH
-  );
+  const [passwordHash, setPasswordHash] = useState<string>(initialHash || DEFAULT_PASS_HASH);
+
+  useEffect(() => {
+    if (initialHash) {
+      setPasswordHash(initialHash);
+    }
+  }, [initialHash]);
 
   const logoutOwner = useCallback((isAuto = false) => {
     setIsOwnerMode(false);
@@ -64,14 +72,17 @@ export const AuthRoleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const changeOwnerPassword = async (newPassword: string): Promise<string> => {
     const newHash = await hashTextSHA256(newPassword);
     setPasswordHash(newHash);
-    localStorage.setItem('kasir_owner_pass_hash', newHash);
+    if (supabase) {
+      await supabase.auth.updateUser({
+        data: { owner_pass_hash: newHash }
+      });
+    }
     return newHash;
   };
 
   const applyCloudPasswordHash = useCallback((hash: string) => {
     if (!hash) return;
     setPasswordHash(hash);
-    localStorage.setItem('kasir_owner_pass_hash', hash);
   }, []);
 
   return (

@@ -9,7 +9,7 @@ import {
   syncStoreConfigToCloud,
   syncProductToCloud
 } from './db/supabaseClient';
-import { AuthRoleProvider, useAuthRole } from './context/AuthRoleContext';
+import { AuthRoleProvider, useAuthRole, DEFAULT_PASS_HASH } from './context/AuthRoleContext';
 import { AuthGate } from './components/AuthGate';
 import { PosPage } from './pages/PosPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -37,13 +37,16 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  const settingsKey = `kasir_settings_${userId}`;
+  const drawerKey = `kasir_drawer_${userId}`;
+
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
-    const saved = localStorage.getItem('kasir_settings');
+    const saved = localStorage.getItem(settingsKey);
     return saved ? { ...createDefaultSettings(registeredStoreName), ...JSON.parse(saved) } : createDefaultSettings(registeredStoreName);
   });
 
   const [cashDrawer, setCashDrawer] = useState<CashDrawer>(() => {
-    const saved = localStorage.getItem('kasir_drawer');
+    const saved = localStorage.getItem(drawerKey);
     return saved ? JSON.parse(saved) : { openingCash: 0, expenses: [] };
   });
 
@@ -71,29 +74,29 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
   }, [userId, passwordHash, storeSettings, cashDrawer]);
 
   const loadAllData = useCallback(async () => {
-    await seedInitialProducts();
-
     if (supabase && navigator.onLine) {
       await syncPendingTransactions(userId);
 
+      // 1. Sinkronkan Pengaturan Toko, Password Owner & Kas Laci
       const cloudConfig = await fetchStoreConfigFromCloud(userId);
       if (cloudConfig) {
         if (cloudConfig.storeSettings) {
           const merged = { ...createDefaultSettings(registeredStoreName), ...cloudConfig.storeSettings };
           setStoreSettings(merged);
-          localStorage.setItem('kasir_settings', JSON.stringify(merged));
+          localStorage.setItem(settingsKey, JSON.stringify(merged));
         }
         if (cloudConfig.ownerPassHash) {
           applyCloudPasswordHash(cloudConfig.ownerPassHash);
         }
         if (cloudConfig.cashDrawer) {
           setCashDrawer(cloudConfig.cashDrawer);
-          localStorage.setItem('kasir_drawer', JSON.stringify(cloudConfig.cashDrawer));
+          localStorage.setItem(drawerKey, JSON.stringify(cloudConfig.cashDrawer));
         }
       } else {
         await syncStoreConfigToCloud(userId, latestConfigRef.current);
       }
 
+      // 2. Sinkronkan Produk (terisolasi per user_id)
       const { data: cloudProds } = await supabase.from('products').select('*').eq('user_id', userId);
       if (cloudProds && cloudProds.length > 0) {
         await db.products.clear();
@@ -107,13 +110,16 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
           stock: Number(cp.stock)
         }));
         await db.products.bulkPut(mapped);
-      } else {
-        const localSeed = await db.products.toArray();
-        for (const p of localSeed) {
+      } else if (cloudProds && cloudProds.length === 0) {
+        await db.products.clear();
+        await seedInitialProducts();
+        const starterProducts = await db.products.toArray();
+        for (const p of starterProducts) {
           await syncProductToCloud(userId, p);
         }
       }
 
+      // 3. Sinkronkan Transaksi (terisolasi per user_id)
       const { data: cloudTrx } = await supabase
         .from('transactions')
         .select('*')
@@ -143,6 +149,8 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
           await db.transactions.bulkPut(mappedTrx);
         }
       }
+    } else {
+      await seedInitialProducts();
     }
 
     isInitialCloudSyncDone.current = true;
@@ -150,7 +158,7 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
     const localTrx = await db.transactions.orderBy('timestamp').reverse().toArray();
     setProducts(localProds);
     setTransactions(localTrx);
-  }, [userId, registeredStoreName, applyCloudPasswordHash]);
+  }, [userId, registeredStoreName, settingsKey, drawerKey, applyCloudPasswordHash]);
 
   useEffect(() => {
     loadAllData();
@@ -183,9 +191,8 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
     if (!confirm(`Keluar dari akun toko (${session.user.email})?`)) return;
     await db.products.clear();
     await db.transactions.clear();
-    localStorage.removeItem('kasir_settings');
-    localStorage.removeItem('kasir_drawer');
-    localStorage.removeItem('kasir_owner_pass_hash');
+    localStorage.removeItem(settingsKey);
+    localStorage.removeItem(drawerKey);
     localStorage.removeItem('kasir_held_carts');
     await supabase?.auth.signOut();
   };
@@ -260,7 +267,7 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
             storeSettings={storeSettings}
             onUpdateDrawer={(d) => {
               setCashDrawer(d);
-              localStorage.setItem('kasir_drawer', JSON.stringify(d));
+              localStorage.setItem(drawerKey, JSON.stringify(d));
             }}
             onDataChanged={loadAllData}
           />
@@ -277,17 +284,17 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
             cashDrawer={cashDrawer}
             onSaveSettings={(s) => {
               setStoreSettings(s);
-              localStorage.setItem('kasir_settings', JSON.stringify(s));
+              localStorage.setItem(settingsKey, JSON.stringify(s));
             }}
             onRestoreAll={async (restored) => {
               if (restored.storeSettings) {
                 const merged = { ...createDefaultSettings(registeredStoreName), ...restored.storeSettings };
                 setStoreSettings(merged);
-                localStorage.setItem('kasir_settings', JSON.stringify(merged));
+                localStorage.setItem(settingsKey, JSON.stringify(merged));
               }
               if (restored.cashDrawer) {
                 setCashDrawer(restored.cashDrawer);
-                localStorage.setItem('kasir_drawer', JSON.stringify(restored.cashDrawer));
+                localStorage.setItem(drawerKey, JSON.stringify(restored.cashDrawer));
               }
               await loadAllData();
             }}
@@ -306,7 +313,7 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
               <label>Kata Sandi Owner</label>
               <input
                 type="password"
-                placeholder="Default: admin123"
+                placeholder="Masukkan sandi Owner..."
                 value={passInput}
                 onChange={(e) => setPassInput(e.target.value)}
                 required
@@ -354,8 +361,11 @@ export function App() {
     return <AuthGate />;
   }
 
+  const accountInitialPassHash =
+    (session.user.user_metadata?.owner_pass_hash as string) || DEFAULT_PASS_HASH;
+
   return (
-    <AuthRoleProvider>
+    <AuthRoleProvider initialHash={accountInitialPassHash}>
       <StoreWorkspace session={session} />
     </AuthRoleProvider>
   );

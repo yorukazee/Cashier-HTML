@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../db/supabaseClient';
+import { DEFAULT_PASS_HASH, hashTextSHA256 } from '../context/AuthRoleContext';
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -27,6 +28,7 @@ export const AuthGate: React.FC = () => {
   const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -44,12 +46,23 @@ export const AuthGate: React.FC = () => {
 
     try {
       if (mode === 'REGISTER') {
+        if (ownerPassword.trim() && ownerPassword.trim().length < 4) {
+          throw new Error('Kata sandi Mode Owner minimal 4 karakter (atau kosongkan untuk default admin123).');
+        }
+
+        const initialOwnerHash = ownerPassword.trim()
+          ? await hashTextSHA256(ownerPassword.trim())
+          : DEFAULT_PASS_HASH;
+
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: {
             emailRedirectTo: window.location.origin,
-            data: { store_name: storeName.trim() || 'Toko Ritel Baru' }
+            data: {
+              store_name: storeName.trim() || 'Toko Ritel Baru',
+              owner_pass_hash: initialOwnerHash
+            }
           }
         });
 
@@ -61,6 +74,7 @@ export const AuthGate: React.FC = () => {
           );
           setMode('LOGIN');
           setPassword('');
+          setOwnerPassword('');
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -185,7 +199,7 @@ export const AuthGate: React.FC = () => {
           </div>
 
           <div>
-            <label style={labelStyle}>Kata Sandi Akun</label>
+            <label style={labelStyle}>Kata Sandi Login Akun</label>
             <input
               type="password"
               style={inputStyle}
@@ -196,6 +210,19 @@ export const AuthGate: React.FC = () => {
               required
             />
           </div>
+
+          {mode === 'REGISTER' && (
+            <div>
+              <label style={labelStyle}>Kata Sandi Mode Owner (Opsional)</label>
+              <input
+                type="password"
+                style={inputStyle}
+                placeholder="Kosongkan untuk default: admin123"
+                value={ownerPassword}
+                onChange={(e) => setOwnerPassword(e.target.value)}
+              />
+            </div>
+          )}
 
           <button
             type="submit"
