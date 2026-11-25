@@ -1,7 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { db, seedInitialProducts } from './db/localDb';
-import { supabase, isSupabaseConfigured, syncPendingTransactions } from './db/supabaseClient';
+import {
+  supabase,
+  isSupabaseConfigured,
+  syncPendingTransactions,
+  fetchStoreConfigFromCloud,
+  syncStoreConfigToCloud,
+  syncProductToCloud
+} from './db/supabaseClient';
 import { AuthRoleProvider, useAuthRole } from './context/AuthRoleContext';
+import { AuthGate } from './components/AuthGate';
 import { PosPage } from './pages/PosPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ProductsPage } from './pages/ProductsPage';
@@ -9,17 +18,20 @@ import { SettingsPage } from './pages/SettingsPage';
 import type { Product, Transaction, CashDrawer, StoreSettings } from './types/pos';
 import './App.css';
 
-const defaultSettings: StoreSettings = {
-  storeName: 'Gilang Satrio Shop',
+const createDefaultSettings = (storeName = 'Toko Ritel Mandiri'): StoreSettings => ({
+  storeName,
   storeAddress: 'Jl. Raya Toko No. 12',
   storePhone: '0812-3456-7890',
-  bankAccount: 'BCA 1234567890 a.n. Gilang Satrio Shop',
+  bankAccount: '',
   qrisImageDataUrl: '',
   receiptFooter: 'Terima Kasih\nBarang yang sudah dibeli\ntidak dapat ditukar'
-};
+});
 
-const MainApp: React.FC = () => {
-  const { isOwnerMode, loginOwner, logoutOwner } = useAuthRole();
+const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
+  const userId = session.user.id;
+  const registeredStoreName = (session.user.user_metadata?.store_name as string) || 'Toko Ritel Mandiri';
+
+  const { isOwnerMode, passwordHash, loginOwner, logoutOwner, applyCloudPasswordHash } = useAuthRole();
   const [activeTab, setActiveTab] = useState<'pos' | 'reports' | 'products' | 'settings'>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -27,7 +39,7 @@ const MainApp: React.FC = () => {
 
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
     const saved = localStorage.getItem('kasir_settings');
-    return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+    return saved ? { ...createDefaultSettings(registeredStoreName), ...JSON.parse(saved) } : createDefaultSettings(registeredStoreName);
   });
 
   const [cashDrawer, setCashDrawer] = useState<CashDrawer>(() => {
@@ -38,17 +50,53 @@ const MainApp: React.FC = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passInput, setPassInput] = useState('');
 
+  const isInitialCloudSyncDone = useRef(false);
+  const latestConfigRef = useRef({ storeSettings, ownerPassHash: passwordHash, cashDrawer });
+
+  useEffect(() => {
+    latestConfigRef.current = { storeSettings, ownerPassHash: passwordHash, cashDrawer };
+  }, [storeSettings, passwordHash, cashDrawer]);
+
   useEffect(() => {
     document.title = `${storeSettings.storeName} - Kasir POS`;
   }, [storeSettings.storeName]);
+
+  useEffect(() => {
+    if (!isInitialCloudSyncDone.current) return;
+    syncStoreConfigToCloud(userId, {
+      storeSettings,
+      ownerPassHash: passwordHash,
+      cashDrawer
+    });
+  }, [userId, passwordHash, storeSettings, cashDrawer]);
 
   const loadAllData = useCallback(async () => {
     await seedInitialProducts();
 
     if (supabase && navigator.onLine) {
-      await syncPendingTransactions();
-      const { data: cloudProds } = await supabase.from('products').select('*');
+      await syncPendingTransactions(userId);
+
+      const cloudConfig = await fetchStoreConfigFromCloud(userId);
+      if (cloudConfig) {
+        if (cloudConfig.storeSettings) {
+          const merged = { ...createDefaultSettings(registeredStoreName), ...cloudConfig.storeSettings };
+          setStoreSettings(merged);
+          localStorage.setItem('kasir_settings', JSON.stringify(merged));
+        }
+        if (cloudConfig.ownerPassHash) {
+          applyCloudPasswordHash(cloudConfig.ownerPassHash);
+        }
+        if (cloudConfig.cashDrawer) {
+          setCashDrawer(cloudConfig.cashDrawer);
+          localStorage.setItem('kasir_drawer', JSON.stringify(cloudConfig.cashDrawer));
+        }
+      } else {
+        await syncStoreConfigToCloud(userId, latestConfigRef.current);
+      }
+
+      const { data: cloudProds } = await supabase.from('products').select('*').eq('user_id', userId);
       if (cloudProds && cloudProds.length > 0) {
+        await db.products.clear();
         const mapped: Product[] = cloudProds.map((cp) => ({
           id: cp.id,
           barcode: cp.barcode,
@@ -59,36 +107,50 @@ const MainApp: React.FC = () => {
           stock: Number(cp.stock)
         }));
         await db.products.bulkPut(mapped);
+      } else {
+        const localSeed = await db.products.toArray();
+        for (const p of localSeed) {
+          await syncProductToCloud(userId, p);
+        }
       }
 
-      const { data: cloudTrx } = await supabase.from('transactions').select('*').order('timestamp', { ascending: false });
-      if (cloudTrx && cloudTrx.length > 0) {
-        const mappedTrx: Transaction[] = cloudTrx.map((ct) => ({
-          id: ct.id,
-          timestamp: ct.timestamp,
-          items: ct.items,
-          subtotal: Number(ct.subtotal),
-          discountAmount: Number(ct.discount_amount),
-          totalRevenue: Number(ct.total_revenue),
-          totalProfit: Number(ct.total_profit),
-          paymentMethod: ct.payment_method,
-          cashAmount: Number(ct.cash_amount),
-          nonCashAmount: Number(ct.non_cash_amount),
-          cashReceived: Number(ct.cash_received),
-          change: Number(ct.change),
-          refCode: ct.ref_code,
-          isVoided: ct.is_voided,
-          synced: true
-        }));
-        await db.transactions.bulkPut(mappedTrx);
+      const { data: cloudTrx } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false });
+
+      if (cloudTrx) {
+        await db.transactions.clear();
+        if (cloudTrx.length > 0) {
+          const mappedTrx: Transaction[] = cloudTrx.map((ct) => ({
+            id: ct.id,
+            timestamp: ct.timestamp,
+            items: ct.items,
+            subtotal: Number(ct.subtotal),
+            discountAmount: Number(ct.discount_amount),
+            totalRevenue: Number(ct.total_revenue),
+            totalProfit: Number(ct.total_profit),
+            paymentMethod: ct.payment_method,
+            cashAmount: Number(ct.cash_amount),
+            nonCashAmount: Number(ct.non_cash_amount),
+            cashReceived: Number(ct.cash_received),
+            change: Number(ct.change),
+            refCode: ct.ref_code,
+            isVoided: ct.is_voided,
+            synced: true
+          }));
+          await db.transactions.bulkPut(mappedTrx);
+        }
       }
     }
 
+    isInitialCloudSyncDone.current = true;
     const localProds = await db.products.toArray();
     const localTrx = await db.transactions.orderBy('timestamp').reverse().toArray();
     setProducts(localProds);
     setTransactions(localTrx);
-  }, []);
+  }, [userId, registeredStoreName, applyCloudPasswordHash]);
 
   useEffect(() => {
     loadAllData();
@@ -115,6 +177,17 @@ const MainApp: React.FC = () => {
     } else {
       alert('Kata sandi Owner salah!');
     }
+  };
+
+  const handleAccountLogout = async () => {
+    if (!confirm(`Keluar dari akun toko (${session.user.email})?`)) return;
+    await db.products.clear();
+    await db.transactions.clear();
+    localStorage.removeItem('kasir_settings');
+    localStorage.removeItem('kasir_drawer');
+    localStorage.removeItem('kasir_owner_pass_hash');
+    localStorage.removeItem('kasir_held_carts');
+    await supabase?.auth.signOut();
   };
 
   return (
@@ -163,15 +236,25 @@ const MainApp: React.FC = () => {
               Keluar Owner
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={handleAccountLogout}
+            title={`Akun: ${session.user.email}`}
+            style={{ background: '#475569', color: '#f8fafc', border: 'none', padding: '8px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
+          >
+            Keluar Akun
+          </button>
         </div>
       </div>
 
       <div className="main-wrapper">
         {activeTab === 'pos' && (
-          <PosPage products={products} storeSettings={storeSettings} onDataChanged={loadAllData} />
+          <PosPage userId={userId} products={products} storeSettings={storeSettings} onDataChanged={loadAllData} />
         )}
         {activeTab === 'reports' && (
           <ReportsPage
+            userId={userId}
             transactions={transactions}
             cashDrawer={cashDrawer}
             storeSettings={storeSettings}
@@ -183,10 +266,11 @@ const MainApp: React.FC = () => {
           />
         )}
         {activeTab === 'products' && isOwnerMode && (
-          <ProductsPage products={products} storeSettings={storeSettings} onDataChanged={loadAllData} />
+          <ProductsPage userId={userId} products={products} storeSettings={storeSettings} onDataChanged={loadAllData} />
         )}
         {activeTab === 'settings' && isOwnerMode && (
           <SettingsPage
+            userId={userId}
             settings={storeSettings}
             products={products}
             transactions={transactions}
@@ -197,7 +281,7 @@ const MainApp: React.FC = () => {
             }}
             onRestoreAll={async (restored) => {
               if (restored.storeSettings) {
-                const merged = { ...defaultSettings, ...restored.storeSettings };
+                const merged = { ...createDefaultSettings(registeredStoreName), ...restored.storeSettings };
                 setStoreSettings(merged);
                 localStorage.setItem('kasir_settings', JSON.stringify(merged));
               }
@@ -241,9 +325,38 @@ const MainApp: React.FC = () => {
 };
 
 export function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    if (!supabase) {
+      setCheckingSession(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setCheckingSession(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  if (checkingSession) {
+    return <div style={{ padding: 40, textAlign: 'center' }}>Memuat sesi akun toko...</div>;
+  }
+
+  if (!session) {
+    return <AuthGate />;
+  }
+
   return (
     <AuthRoleProvider>
-      <MainApp />
+      <StoreWorkspace session={session} />
     </AuthRoleProvider>
   );
 }

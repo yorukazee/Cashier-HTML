@@ -5,12 +5,13 @@ import { formatRupiah, generateBarcode } from '../utils/helpers';
 import type { Product, StoreSettings } from '../types/pos';
 
 interface ProductsPageProps {
+  userId: string;
   products: Product[];
   storeSettings: StoreSettings;
   onDataChanged: () => void;
 }
 
-export const ProductsPage: React.FC<ProductsPageProps> = ({ products, storeSettings, onDataChanged }) => {
+export const ProductsPage: React.FC<ProductsPageProps> = ({ userId, products, storeSettings, onDataChanged }) => {
   const [editId, setEditId] = useState<string | null>(null);
   const [barcode, setBarcode] = useState('');
   const [name, setName] = useState('');
@@ -50,7 +51,7 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({ products, storeSetti
       stock
     };
     await db.products.put(productData);
-    await syncProductToCloud(productData);
+    await syncProductToCloud(userId, productData);
     resetForm();
     onDataChanged();
   };
@@ -72,7 +73,7 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({ products, storeSetti
     if (!isNaN(addQty) && addQty > 0) {
       const updated = { ...p, stock: p.stock + addQty };
       await db.products.put(updated);
-      await syncProductToCloud(updated);
+      await syncProductToCloud(userId, updated);
       onDataChanged();
     }
   };
@@ -84,7 +85,7 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({ products, storeSetti
     if (!isNaN(actual) && actual >= 0) {
       const updated = { ...p, stock: actual };
       await db.products.put(updated);
-      await syncProductToCloud(updated);
+      await syncProductToCloud(userId, updated);
       onDataChanged();
     }
   };
@@ -92,7 +93,7 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({ products, storeSetti
   const handleDelete = async (id: string) => {
     if (!confirm('Hapus produk ini?')) return;
     await db.products.delete(id);
-    await deleteProductFromCloud(id);
+    await deleteProductFromCloud(userId, id);
     onDataChanged();
   };
 
@@ -188,7 +189,6 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({ products, storeSetti
         </div>
       </div>
 
-      {/* MODAL CETAK LABEL RAK */}
       {labelProduct && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 340 }}>

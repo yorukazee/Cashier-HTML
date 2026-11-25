@@ -5,6 +5,7 @@ import { useAuthRole } from '../context/AuthRoleContext';
 import type { Product, Transaction, CashDrawer, StoreSettings } from '../types/pos';
 
 interface SettingsPageProps {
+  userId: string;
   settings: StoreSettings;
   products: Product[];
   transactions: Transaction[];
@@ -19,6 +20,7 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
+  userId,
   settings,
   products,
   transactions,
@@ -117,13 +119,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         await db.products.clear();
         await db.products.bulkPut(restoredProducts);
         for (const prod of restoredProducts) {
-          await syncProductToCloud(prod);
+          await syncProductToCloud(userId, prod);
         }
 
         if (restoredTrx.length > 0) {
           await db.transactions.clear();
           await db.transactions.bulkPut(restoredTrx);
-          await syncPendingTransactions();
+          await syncPendingTransactions(userId);
         }
 
         if (parsed.storeSettings) setForm({ ...form, ...parsed.storeSettings });

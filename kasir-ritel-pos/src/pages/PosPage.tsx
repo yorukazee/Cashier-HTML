@@ -12,12 +12,13 @@ interface HeldCart {
 }
 
 interface PosPageProps {
+  userId: string;
   products: Product[];
   storeSettings: StoreSettings;
   onDataChanged: () => void;
 }
 
-export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDataChanged }) => {
+export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSettings, onDataChanged }) => {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Semua');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -27,14 +28,12 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [splitCash, setSplitCash] = useState<number>(0);
 
-  // Antrean Parkir (Hold & Recall)
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>(() => {
     const saved = localStorage.getItem('kasir_held_carts');
     return saved ? JSON.parse(saved) : [];
   });
   const [showHeldModal, setShowHeldModal] = useState(false);
 
-  // Modal Verifikasi QRIS/Transfer & Struk
   const [pendingOrder, setPendingOrder] = useState<{
     subtotal: number;
     discountAmount: number;
@@ -53,7 +52,6 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
     localStorage.setItem('kasir_held_carts', JSON.stringify(heldCarts));
   }, [heldCarts]);
 
-  // Pintasan keyboard F2 fokus barcode & F8 proses bayar
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
@@ -224,7 +222,7 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
       if (master) {
         const updatedProduct = { ...master, stock: Math.max(0, master.stock - item.qty) };
         await db.products.put(updatedProduct);
-        syncProductToCloud(updatedProduct);
+        syncProductToCloud(userId, updatedProduct);
       }
     }
 
@@ -248,7 +246,7 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
     };
 
     await db.transactions.add(newTrx);
-    await syncPendingTransactions();
+    await syncPendingTransactions(userId);
 
     setReceiptTrx(newTrx);
     setCart([]);
@@ -266,7 +264,6 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
 
   return (
     <div className="pos-grid">
-      {/* KATALOG BARANG */}
       <div className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', paddingBottom: 10, marginBottom: 12 }}>
           <h2 style={{ border: 'none', margin: 0, padding: 0 }}>Katalog Barang</h2>
@@ -321,7 +318,6 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
         </div>
       </div>
 
-      {/* KERANJANG & PEMBAYARAN */}
       <div className="panel">
         <div className="cart-header">
           <h2 style={{ border: 'none', margin: 0, padding: 0 }}>Keranjang Transaksi</h2>
@@ -431,7 +427,6 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
         </div>
       </div>
 
-      {/* MODAL ANTREAN DITAHAN */}
       {showHeldModal && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -460,7 +455,6 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
         </div>
       )}
 
-      {/* MODAL VERIFIKASI QRIS / TRANSFER */}
       {pendingOrder && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 420 }}>
@@ -513,7 +507,6 @@ export const PosPage: React.FC<PosPageProps> = ({ products, storeSettings, onDat
         </div>
       )}
 
-      {/* MODAL STRUK BELANJA */}
       {receiptTrx && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 340 }}>

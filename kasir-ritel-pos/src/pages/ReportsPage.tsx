@@ -6,6 +6,7 @@ import { formatRupiah } from '../utils/helpers';
 import type { Transaction, CashDrawer, StoreSettings } from '../types/pos';
 
 interface ReportsPageProps {
+  userId: string;
   transactions: Transaction[];
   cashDrawer: CashDrawer;
   storeSettings: StoreSettings;
@@ -14,6 +15,7 @@ interface ReportsPageProps {
 }
 
 export const ReportsPage: React.FC<ReportsPageProps> = ({
+  userId,
   transactions,
   cashDrawer,
   storeSettings,
@@ -98,13 +100,13 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
       if (prod) {
         const updated = { ...prod, stock: prod.stock + item.qty };
         await db.products.put(updated);
-        syncProductToCloud(updated);
+        syncProductToCloud(userId, updated);
       }
     }
 
     await db.transactions.update(trx.id, { isVoided: true });
     if (supabase && navigator.onLine) {
-      await supabase.from('transactions').update({ is_voided: true }).eq('id', trx.id);
+      await supabase.from('transactions').update({ is_voided: true }).eq('user_id', userId).eq('id', trx.id);
     }
     onDataChanged();
   };
@@ -273,7 +275,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
         </div>
       </div>
 
-      {/* MODAL DAFTAR PENGELUARAN KAS */}
       {showExpenseList && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -303,7 +304,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
         </div>
       )}
 
-      {/* MODAL REPRINT STRUK */}
       {reprintTrx && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 340 }}>
