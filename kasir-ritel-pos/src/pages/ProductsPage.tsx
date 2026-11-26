@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { db } from '../db/localDb';
-import { syncProductToCloud, deleteProductFromCloud } from '../db/supabaseClient';
+import { syncProductToCloud, deleteProductFromCloud, adjustProductStockInCloud } from '../db/supabaseClient';
 import { formatRupiah, generateBarcode } from '../utils/helpers';
 import type { Product, StoreSettings } from '../types/pos';
 
@@ -71,9 +71,11 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({ userId, products, st
     if (val === null) return;
     const addQty = Number(val);
     if (!isNaN(addQty) && addQty > 0) {
-      const updated = { ...p, stock: p.stock + addQty };
-      await db.products.put(updated);
-      await syncProductToCloud(userId, updated);
+      await db.products.put({ ...p, stock: p.stock + addQty });
+      const serverStock = await adjustProductStockInCloud(userId, p.id, addQty);
+      if (serverStock !== null) {
+        await db.products.update(p.id, { stock: serverStock });
+      }
       onDataChanged();
     }
   };

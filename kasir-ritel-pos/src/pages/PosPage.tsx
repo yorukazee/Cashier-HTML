@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../db/localDb';
-import { syncProductToCloud, syncPendingTransactions } from '../db/supabaseClient';
+import { adjustProductStockInCloud, syncPendingTransactions } from '../db/supabaseClient';
 import { formatRupiah } from '../utils/helpers';
 import type { Product, CartItem, Transaction, PaymentMethod, StoreSettings } from '../types/pos';
 
@@ -220,9 +220,12 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
     for (const item of cart) {
       const master = await db.products.get(item.id);
       if (master) {
-        const updatedProduct = { ...master, stock: Math.max(0, master.stock - item.qty) };
-        await db.products.put(updatedProduct);
-        syncProductToCloud(userId, updatedProduct);
+        const optimisticStock = Math.max(0, master.stock - item.qty);
+        await db.products.put({ ...master, stock: optimisticStock });
+        const serverStock = await adjustProductStockInCloud(userId, item.id, -item.qty);
+        if (serverStock !== null) {
+          await db.products.update(item.id, { stock: serverStock });
+        }
       }
     }
 

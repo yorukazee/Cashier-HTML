@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { db } from '../db/localDb';
-import { supabase, syncProductToCloud } from '../db/supabaseClient';
+import { supabase, adjustProductStockInCloud } from '../db/supabaseClient';
 import { useAuthRole } from '../context/AuthRoleContext';
 import { formatRupiah } from '../utils/helpers';
 import type { Transaction, CashDrawer, StoreSettings } from '../types/pos';
@@ -98,9 +98,12 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     for (const item of trx.items) {
       const prod = await db.products.get(item.id);
       if (prod) {
-        const updated = { ...prod, stock: prod.stock + item.qty };
-        await db.products.put(updated);
-        syncProductToCloud(userId, updated);
+        const optimisticStock = prod.stock + item.qty;
+        await db.products.put({ ...prod, stock: optimisticStock });
+        const serverStock = await adjustProductStockInCloud(userId, item.id, item.qty);
+        if (serverStock !== null) {
+          await db.products.update(item.id, { stock: serverStock });
+        }
       }
     }
 
