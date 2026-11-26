@@ -27,11 +27,102 @@ const createDefaultSettings = (storeName = 'Toko Ritel Mandiri'): StoreSettings 
   receiptFooter: 'Terima Kasih\nBarang yang sudah dibeli\ntidak dapat ditukar'
 });
 
+const PasswordRecoveryScreen: React.FC<{ email?: string; onComplete: () => void }> = ({ email, onComplete }) => {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    if (newPassword.length < 6) {
+      setError('Kata sandi akun baru minimal 6 karakter.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Konfirmasi kata sandi tidak cocok.');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    setSaving(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    window.history.replaceState(null, '', window.location.pathname);
+    alert('Kata sandi akun toko berhasil diperbarui!');
+    onComplete();
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#1e293b', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <div className="modal-box" style={{ maxWidth: 400, width: '100%', boxSizing: 'border-box', textAlign: 'left' }}>
+        <h3 style={{ marginTop: 0, fontSize: '1.15rem', color: '#0f172a' }}>Buat Kata Sandi Akun Baru</h3>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+          Akun: <strong>{email || 'Toko Ritel'}</strong>
+        </p>
+
+        {error && (
+          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', padding: 10, borderRadius: 6, fontSize: '0.84rem', marginBottom: 12 }}>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleResetSubmit}>
+          <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: '0.88rem' }}>
+            Kata Sandi Akun Baru
+          </label>
+          <input
+            type="password"
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '10px 12px', marginBottom: 12, borderRadius: 6, border: '1px solid #cbd5e1' }}
+            placeholder="Minimal 6 karakter..."
+            minLength={6}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+            autoFocus
+          />
+
+          <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: '0.88rem' }}>
+            Konfirmasi Kata Sandi Baru
+          </label>
+          <input
+            type="password"
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '10px 12px', marginBottom: 16, borderRadius: 6, border: '1px solid #cbd5e1' }}
+            placeholder="Ketik ulang kata sandi baru..."
+            minLength={6}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
+
+          <button type="submit" className="btn-primary" style={{ display: 'block', width: '100%', padding: 12 }} disabled={saving}>
+            {saving ? 'Menyimpan...' : 'Simpan Kata Sandi Baru'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
   const userId = session.user.id;
   const registeredStoreName = (session.user.user_metadata?.store_name as string) || 'Toko Ritel Mandiri';
 
-  const { isOwnerMode, passwordHash, loginOwner, logoutOwner, applyCloudPasswordHash } = useAuthRole();
+  const {
+    isOwnerMode,
+    passwordHash,
+    loginOwner,
+    logoutOwner,
+    changeOwnerPassword,
+    applyCloudPasswordHash
+  } = useAuthRole();
   const [activeTab, setActiveTab] = useState<'pos' | 'reports' | 'products' | 'settings'>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -53,6 +144,11 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passInput, setPassInput] = useState('');
   const [verifyingOwner, setVerifyingOwner] = useState(false);
+
+  const [isResettingOwner, setIsResettingOwner] = useState(false);
+  const [verifyAccountPass, setVerifyAccountPass] = useState('');
+  const [newOwnerPass, setNewOwnerPass] = useState('');
+  const [confirmOwnerPass, setConfirmOwnerPass] = useState('');
 
   const isInitialCloudSyncDone = useRef(false);
   const latestConfigRef = useRef({ storeSettings, ownerPassHash: passwordHash, cashDrawer });
@@ -78,7 +174,6 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
     if (supabase && navigator.onLine) {
       await syncPendingTransactions(userId);
 
-      // 1. Sinkronkan Pengaturan Toko, Password Owner & Kas Laci dari akun cloud
       const cloudConfig = await fetchStoreConfigFromCloud(userId);
       if (cloudConfig) {
         if (cloudConfig.storeSettings) {
@@ -97,7 +192,6 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
         await syncStoreConfigToCloud(userId, latestConfigRef.current);
       }
 
-      // 2. Sinkronkan Produk (terisolasi per user_id)
       const { data: cloudProds } = await supabase.from('products').select('*').eq('user_id', userId);
       if (cloudProds && cloudProds.length > 0) {
         await db.products.clear();
@@ -120,7 +214,6 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
         }
       }
 
-      // 3. Sinkronkan Transaksi (terisolasi per user_id)
       const { data: cloudTrx } = await supabase
         .from('transactions')
         .select('*')
@@ -184,17 +277,60 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
     };
   }, [loadAllData]);
 
+  const closeOwnerModal = () => {
+    setShowLoginModal(false);
+    setPassInput('');
+    setIsResettingOwner(false);
+    setVerifyAccountPass('');
+    setNewOwnerPass('');
+    setConfirmOwnerPass('');
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setVerifyingOwner(true);
     const ok = await loginOwner(passInput);
     setVerifyingOwner(false);
     if (ok) {
-      setShowLoginModal(false);
-      setPassInput('');
+      closeOwnerModal();
     } else {
       alert('Kata sandi Owner salah!');
     }
+  };
+
+  const handleResetOwnerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !session.user.email) return;
+
+    if (newOwnerPass.length < 4) {
+      alert('Kata sandi Owner baru minimal 4 karakter!');
+      return;
+    }
+    if (newOwnerPass !== confirmOwnerPass) {
+      alert('Konfirmasi kata sandi Owner baru tidak cocok!');
+      return;
+    }
+
+    setVerifyingOwner(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: session.user.email,
+      password: verifyAccountPass
+    });
+
+    if (error) {
+      setVerifyingOwner(false);
+      alert('Kata sandi Login Akun Toko salah! Reset sandi Owner dibatalkan.');
+      return;
+    }
+
+    await changeOwnerPassword(newOwnerPass);
+    setVerifyingOwner(false);
+    alert('Kata sandi Mode Owner berhasil direset! Silakan masuk menggunakan kata sandi Owner yang baru.');
+    setIsResettingOwner(false);
+    setVerifyAccountPass('');
+    setNewOwnerPass('');
+    setConfirmOwnerPass('');
+    setPassInput('');
   };
 
   const handleAccountLogout = async () => {
@@ -314,28 +450,96 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
 
       {showLoginModal && (
         <div className="modal-overlay">
-          <div className="modal-box" style={{ maxWidth: 360 }}>
-            <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>Masuk ke Mode Owner</h3>
-            <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: 0 }}>
-              Mode Owner otomatis terkunci kembali jika tidak ada aktivitas selama 3 menit.
-            </p>
-            <form onSubmit={handleLoginSubmit}>
-              <label>Kata Sandi Owner</label>
-              <input
-                type="password"
-                placeholder="Masukkan sandi Owner..."
-                value={passInput}
-                onChange={(e) => setPassInput(e.target.value)}
-                required
-                autoFocus
-              />
-              <div className="modal-actions" style={{ marginTop: 10 }}>
-                <button type="submit" className="btn-print" style={{ background: '#d97706' }} disabled={verifyingOwner}>
-                  {verifyingOwner ? 'Memverifikasi...' : 'Masuk Owner'}
-                </button>
-                <button type="button" className="btn-close" onClick={() => setShowLoginModal(false)}>Batal</button>
-              </div>
-            </form>
+          <div className="modal-box" style={{ maxWidth: 380, textAlign: 'left' }}>
+            {!isResettingOwner ? (
+              <>
+                <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>Masuk ke Mode Owner</h3>
+                <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: 0 }}>
+                  Mode Owner otomatis terkunci kembali jika tidak ada aktivitas selama 3 menit.
+                </p>
+                <form onSubmit={handleLoginSubmit}>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Kata Sandi Owner</label>
+                  <input
+                    type="password"
+                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '10px 12px', marginBottom: 12, borderRadius: 6, border: '1px solid #cbd5e1' }}
+                    placeholder="Masukkan sandi Owner..."
+                    value={passInput}
+                    onChange={(e) => setPassInput(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <div className="modal-actions" style={{ marginTop: 10 }}>
+                    <button type="submit" className="btn-print" style={{ background: '#d97706' }} disabled={verifyingOwner}>
+                      {verifyingOwner ? 'Memverifikasi...' : 'Masuk Owner'}
+                    </button>
+                    <button type="button" className="btn-close" onClick={closeOwnerModal}>Batal</button>
+                  </div>
+                </form>
+                <div style={{ textAlign: 'center', marginTop: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsResettingOwner(true)}
+                    style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Lupa kata sandi Owner?
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#0f172a' }}>Reset Kata Sandi Owner</h3>
+                <p style={{ fontSize: '0.82rem', color: '#475569', marginTop: 0 }}>
+                  Verifikasi dengan <strong>Kata Sandi Login Akun Toko</strong> ({session.user.email}) untuk membuat sandi Owner baru.
+                </p>
+                <form onSubmit={handleResetOwnerSubmit}>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.85rem' }}>
+                    Kata Sandi Login Akun Toko
+                  </label>
+                  <input
+                    type="password"
+                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 10px', marginBottom: 10, borderRadius: 6, border: '1px solid #cbd5e1' }}
+                    placeholder="Kata sandi login email toko..."
+                    value={verifyAccountPass}
+                    onChange={(e) => setVerifyAccountPass(e.target.value)}
+                    required
+                    autoFocus
+                  />
+
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.85rem' }}>
+                    Kata Sandi Owner Baru
+                  </label>
+                  <input
+                    type="password"
+                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 10px', marginBottom: 10, borderRadius: 6, border: '1px solid #cbd5e1' }}
+                    placeholder="Minimal 4 karakter..."
+                    value={newOwnerPass}
+                    onChange={(e) => setNewOwnerPass(e.target.value)}
+                    required
+                  />
+
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.85rem' }}>
+                    Konfirmasi Kata Sandi Owner Baru
+                  </label>
+                  <input
+                    type="password"
+                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '9px 10px', marginBottom: 12, borderRadius: 6, border: '1px solid #cbd5e1' }}
+                    placeholder="Ketik ulang sandi Owner baru..."
+                    value={confirmOwnerPass}
+                    onChange={(e) => setConfirmOwnerPass(e.target.value)}
+                    required
+                  />
+
+                  <div className="modal-actions">
+                    <button type="submit" className="btn-print" style={{ background: '#16a34a' }} disabled={verifyingOwner}>
+                      {verifyingOwner ? 'Memproses...' : 'Simpan Sandi Owner'}
+                    </button>
+                    <button type="button" className="btn-close" onClick={() => setIsResettingOwner(false)}>
+                      Kembali
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -346,6 +550,9 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(() =>
+    window.location.hash.includes('type=recovery')
+  );
 
   useEffect(() => {
     if (!supabase) {
@@ -358,8 +565,11 @@ export function App() {
       setCheckingSession(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true);
+      }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -367,6 +577,15 @@ export function App() {
 
   if (checkingSession) {
     return <div style={{ padding: 40, textAlign: 'center' }}>Memuat sesi akun toko...</div>;
+  }
+
+  if (isRecoveryMode && session) {
+    return (
+      <PasswordRecoveryScreen
+        email={session.user.email}
+        onComplete={() => setIsRecoveryMode(false)}
+      />
+    );
   }
 
   if (!session) {

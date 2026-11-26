@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { db } from '../db/localDb';
-import { syncProductToCloud, syncPendingTransactions } from '../db/supabaseClient';
+import { supabase, syncProductToCloud, syncPendingTransactions } from '../db/supabaseClient';
 import { useAuthRole } from '../context/AuthRoleContext';
 import type { Product, Transaction, CashDrawer, StoreSettings } from '../types/pos';
 
@@ -32,6 +32,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [form, setForm] = useState<StoreSettings>(settings);
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
+
+  const [newAccountPass, setNewAccountPass] = useState('');
+  const [confirmAccountPass, setConfirmAccountPass] = useState('');
+  const [updatingAccountPass, setUpdatingAccountPass] = useState(false);
 
   const handleQrisUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -76,7 +80,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     await changeOwnerPassword(newPass);
     setNewPass('');
     setConfirmPass('');
-    alert('Kata sandi Owner berhasil diperbarui!');
+    alert('Kata sandi Owner berhasil diperbarui dan disinkronkan ke akun!');
+  };
+
+  const handleAccountPassChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    if (newAccountPass.length < 6) return alert('Kata sandi login akun minimal 6 karakter!');
+    if (newAccountPass !== confirmAccountPass) return alert('Konfirmasi kata sandi login akun tidak cocok!');
+
+    setUpdatingAccountPass(true);
+    const { error } = await supabase.auth.updateUser({ password: newAccountPass });
+    setUpdatingAccountPass(false);
+
+    if (error) {
+      alert('Gagal mengubah kata sandi akun: ' + error.message);
+      return;
+    }
+
+    setNewAccountPass('');
+    setConfirmAccountPass('');
+    alert('Kata sandi Login Akun Toko berhasil diperbarui!');
   };
 
   const handleDownloadBackup = () => {
@@ -177,9 +201,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <form onSubmit={handlePassChange}>
             <label>Kata Sandi Baru Owner</label>
             <input type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Minimal 4 karakter..." required />
-            <label>Konfirmasi Kata Sandi Baru</label>
+            <label>Konfirmasi Kata Sandi Baru Owner</label>
             <input type="password" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} placeholder="Ketik ulang kata sandi baru..." required />
             <button type="submit" className="btn-primary" style={{ background: '#d97706' }}>Ubah Kata Sandi Owner</button>
+          </form>
+        </div>
+
+        <div className="section-divider">
+          <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem' }}>Keamanan Login Akun Toko (Email)</h3>
+          <form onSubmit={handleAccountPassChange}>
+            <label>Kata Sandi Baru Login Akun</label>
+            <input type="password" value={newAccountPass} onChange={(e) => setNewAccountPass(e.target.value)} placeholder="Minimal 6 karakter..." minLength={6} required />
+            <label>Konfirmasi Kata Sandi Baru Akun</label>
+            <input type="password" value={confirmAccountPass} onChange={(e) => setConfirmAccountPass(e.target.value)} placeholder="Ketik ulang kata sandi akun..." minLength={6} required />
+            <button type="submit" className="btn-primary" style={{ background: '#2563eb' }} disabled={updatingAccountPass}>
+              {updatingAccountPass ? 'Menyimpan...' : 'Ubah Kata Sandi Login Akun'}
+            </button>
           </form>
         </div>
 

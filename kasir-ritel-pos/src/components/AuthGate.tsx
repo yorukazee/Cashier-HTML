@@ -24,7 +24,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 export const AuthGate: React.FC = () => {
-  const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'FORGOT'>('LOGIN');
   const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,6 +32,12 @@ export const AuthGate: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  const switchMode = (nextMode: 'LOGIN' | 'REGISTER' | 'FORGOT') => {
+    setMode(nextMode);
+    setErrorMessage('');
+    setInfoMessage('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +51,16 @@ export const AuthGate: React.FC = () => {
     setInfoMessage('');
 
     try {
-      if (mode === 'REGISTER') {
+      if (mode === 'FORGOT') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: window.location.origin
+        });
+        if (error) throw error;
+
+        setInfoMessage(
+          `Tautan reset kata sandi telah dikirim ke ${email.trim()}. Silakan buka kotak masuk atau folder Spam, lalu klik tautan tersebut untuk membuat kata sandi baru.`
+        );
+      } else if (mode === 'REGISTER') {
         if (ownerPassword.trim() && ownerPassword.trim().length < 4) {
           throw new Error('Kata sandi Mode Owner minimal 4 karakter (atau kosongkan untuk default admin123).');
         }
@@ -126,38 +141,47 @@ export const AuthGate: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
-          <button
-            type="button"
-            onClick={() => { setMode('LOGIN'); setErrorMessage(''); setInfoMessage(''); }}
-            style={{
-              padding: 10,
-              borderRadius: 6,
-              border: 'none',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              background: mode === 'LOGIN' ? '#2563eb' : '#e2e8f0',
-              color: mode === 'LOGIN' ? '#fff' : '#334155'
-            }}
-          >
-            Masuk Toko
-          </button>
-          <button
-            type="button"
-            onClick={() => { setMode('REGISTER'); setErrorMessage(''); setInfoMessage(''); }}
-            style={{
-              padding: 10,
-              borderRadius: 6,
-              border: 'none',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              background: mode === 'REGISTER' ? '#2563eb' : '#e2e8f0',
-              color: mode === 'REGISTER' ? '#fff' : '#334155'
-            }}
-          >
-            Daftar Toko Baru
-          </button>
-        </div>
+        {mode !== 'FORGOT' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
+            <button
+              type="button"
+              onClick={() => switchMode('LOGIN')}
+              style={{
+                padding: 10,
+                borderRadius: 6,
+                border: 'none',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                background: mode === 'LOGIN' ? '#2563eb' : '#e2e8f0',
+                color: mode === 'LOGIN' ? '#fff' : '#334155'
+              }}
+            >
+              Masuk Toko
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode('REGISTER')}
+              style={{
+                padding: 10,
+                borderRadius: 6,
+                border: 'none',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                background: mode === 'REGISTER' ? '#2563eb' : '#e2e8f0',
+                color: mode === 'REGISTER' ? '#fff' : '#334155'
+              }}
+            >
+              Daftar Toko Baru
+            </button>
+          </div>
+        ) : (
+          <div style={{ background: '#f1f5f9', padding: '10px 12px', borderRadius: 6, marginBottom: 16 }}>
+            <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>Reset Kata Sandi Akun Toko</strong>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#475569' }}>
+              Masukkan email terdaftar untuk menerima tautan pembuatan kata sandi baru.
+            </p>
+          </div>
+        )}
 
         {infoMessage && (
           <div style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: 10, borderRadius: 6, fontSize: '0.84rem', marginBottom: 14 }}>
@@ -198,18 +222,20 @@ export const AuthGate: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Kata Sandi Login Akun</label>
-            <input
-              type="password"
-              style={inputStyle}
-              placeholder="Minimal 6 karakter..."
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+          {mode !== 'FORGOT' && (
+            <div>
+              <label style={labelStyle}>Kata Sandi Login Akun</label>
+              <input
+                type="password"
+                style={inputStyle}
+                placeholder="Minimal 6 karakter..."
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+          )}
 
           {mode === 'REGISTER' && (
             <div>
@@ -230,18 +256,43 @@ export const AuthGate: React.FC = () => {
             style={{ display: 'block', width: '100%', marginTop: 4, padding: 12 }}
             disabled={loading}
           >
-            {loading ? 'Memproses...' : mode === 'LOGIN' ? 'Masuk ke Kasir' : 'Buat Akun & Kirim Verifikasi'}
+            {loading
+              ? 'Memproses...'
+              : mode === 'LOGIN'
+              ? 'Masuk ke Kasir'
+              : mode === 'REGISTER'
+              ? 'Buat Akun & Kirim Verifikasi'
+              : 'Kirim Link Reset Password'}
           </button>
         </form>
 
         {mode === 'LOGIN' && (
-          <div style={{ textAlign: 'center', marginTop: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', marginTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => switchMode('FORGOT')}
+              style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '0.84rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Lupa kata sandi akun? Reset via Email
+            </button>
             <button
               type="button"
               onClick={handleResendVerification}
               style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline' }}
             >
               Belum menerima email verifikasi? Kirim ulang
+            </button>
+          </div>
+        )}
+
+        {mode === 'FORGOT' && (
+          <div style={{ textAlign: 'center', marginTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => switchMode('LOGIN')}
+              style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              ← Kembali ke halaman Masuk Toko
             </button>
           </div>
         )}
