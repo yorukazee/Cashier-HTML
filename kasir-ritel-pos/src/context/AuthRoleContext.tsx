@@ -23,12 +23,18 @@ interface AuthRoleContextType {
 
 const AuthRoleContext = createContext<AuthRoleContextType | undefined>(undefined);
 
-export const AuthRoleProvider: React.FC<{ children: React.ReactNode; initialHash?: string }> = ({
-  children,
-  initialHash
-}) => {
+export const AuthRoleProvider: React.FC<{
+  children: React.ReactNode;
+  userId?: string;
+  initialHash?: string;
+}> = ({ children, userId, initialHash }) => {
   const [isOwnerMode, setIsOwnerMode] = useState(false);
   const [passwordHash, setPasswordHash] = useState<string>(initialHash || DEFAULT_PASS_HASH);
+
+  useEffect(() => {
+    // Hapus sisa penyimpanan lokal lama agar password murni mengikuti akun cloud
+    localStorage.removeItem('kasir_owner_pass_hash');
+  }, []);
 
   useEffect(() => {
     if (initialHash) {
@@ -62,7 +68,30 @@ export const AuthRoleProvider: React.FC<{ children: React.ReactNode; initialHash
 
   const loginOwner = async (password: string): Promise<boolean> => {
     const inputHash = await hashTextSHA256(password);
-    if (inputHash === passwordHash) {
+    let latestAccountHash = passwordHash;
+
+    // Ambil hash password Owner paling baru langsung dari akun Supabase
+    if (supabase && navigator.onLine && userId) {
+      const { data: configData } = await supabase
+        .from('store_config')
+        .select('owner_pass_hash')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (configData?.owner_pass_hash) {
+        latestAccountHash = configData.owner_pass_hash;
+        setPasswordHash(latestAccountHash);
+      } else {
+        const { data: userData } = await supabase.auth.getUser();
+        const metaHash = userData.user?.user_metadata?.owner_pass_hash as string | undefined;
+        if (metaHash) {
+          latestAccountHash = metaHash;
+          setPasswordHash(metaHash);
+        }
+      }
+    }
+
+    if (inputHash === latestAccountHash) {
       setIsOwnerMode(true);
       return true;
     }
@@ -72,11 +101,23 @@ export const AuthRoleProvider: React.FC<{ children: React.ReactNode; initialHash
   const changeOwnerPassword = async (newPassword: string): Promise<string> => {
     const newHash = await hashTextSHA256(newPassword);
     setPasswordHash(newHash);
+
     if (supabase) {
       await supabase.auth.updateUser({
         data: { owner_pass_hash: newHash }
       });
+
+      if (userId) {
+        await supabase
+          .from('store_config')
+          .update({
+            owner_pass_hash: newHash,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId);
+      }
     }
+
     return newHash;
   };
 

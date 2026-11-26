@@ -52,6 +52,7 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passInput, setPassInput] = useState('');
+  const [verifyingOwner, setVerifyingOwner] = useState(false);
 
   const isInitialCloudSyncDone = useRef(false);
   const latestConfigRef = useRef({ storeSettings, ownerPassHash: passwordHash, cashDrawer });
@@ -77,7 +78,7 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
     if (supabase && navigator.onLine) {
       await syncPendingTransactions(userId);
 
-      // 1. Sinkronkan Pengaturan Toko, Password Owner & Kas Laci
+      // 1. Sinkronkan Pengaturan Toko, Password Owner & Kas Laci dari akun cloud
       const cloudConfig = await fetchStoreConfigFromCloud(userId);
       if (cloudConfig) {
         if (cloudConfig.storeSettings) {
@@ -167,18 +168,27 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
       loadAllData();
     };
     const handleOffline = () => setIsOnline(false);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [loadAllData]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setVerifyingOwner(true);
     const ok = await loginOwner(passInput);
+    setVerifyingOwner(false);
     if (ok) {
       setShowLoginModal(false);
       setPassInput('');
@@ -320,7 +330,9 @@ const StoreWorkspace: React.FC<{ session: Session }> = ({ session }) => {
                 autoFocus
               />
               <div className="modal-actions" style={{ marginTop: 10 }}>
-                <button type="submit" className="btn-print" style={{ background: '#d97706' }}>Masuk Owner</button>
+                <button type="submit" className="btn-print" style={{ background: '#d97706' }} disabled={verifyingOwner}>
+                  {verifyingOwner ? 'Memverifikasi...' : 'Masuk Owner'}
+                </button>
                 <button type="button" className="btn-close" onClick={() => setShowLoginModal(false)}>Batal</button>
               </div>
             </form>
@@ -365,7 +377,7 @@ export function App() {
     (session.user.user_metadata?.owner_pass_hash as string) || DEFAULT_PASS_HASH;
 
   return (
-    <AuthRoleProvider initialHash={accountInitialPassHash}>
+    <AuthRoleProvider userId={session.user.id} initialHash={accountInitialPassHash}>
       <StoreWorkspace session={session} />
     </AuthRoleProvider>
   );
