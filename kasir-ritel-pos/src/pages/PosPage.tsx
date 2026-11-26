@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../db/localDb';
 import { adjustProductStockInCloud, syncPendingTransactions } from '../db/supabaseClient';
 import { formatRupiah } from '../utils/helpers';
-import type { Product, CartItem, Transaction, PaymentMethod, StoreSettings } from '../types/pos';
+import type { Product, CartItem, Transaction, PaymentMethod, StoreSettings, ActiveShift } from '../types/pos';
 
 interface HeldCart {
   id: number;
@@ -18,6 +18,20 @@ interface PosPageProps {
   onDataChanged: () => void;
 }
 
+const DEFAULT_SHIFT: ActiveShift = {
+  cashierName: 'Kasir 1',
+  shiftName: 'Shift Pagi'
+};
+
+function getEffectiveUnitPrice(product: { sellPrice: number; wholesaleMinQty?: number; wholesalePrice?: number }, qty: number): number {
+  const minQty = product.wholesaleMinQty || 0;
+  const wPrice = product.wholesalePrice || 0;
+  if (minQty > 1 && wPrice > 0 && qty >= minQty) {
+    return wPrice;
+  }
+  return product.sellPrice;
+}
+
 export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSettings, onDataChanged }) => {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Semua');
@@ -28,9 +42,25 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [splitCash, setSplitCash] = useState<number>(0);
 
+  const [activeShift, setActiveShift] = useState<ActiveShift>(() => {
+    try {
+      const saved = localStorage.getItem('kasir_active_shift');
+      return saved ? { ...DEFAULT_SHIFT, ...JSON.parse(saved) } : DEFAULT_SHIFT;
+    } catch {
+      return DEFAULT_SHIFT;
+    }
+  });
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [shiftCashierDraft, setShiftCashierDraft] = useState(activeShift.cashierName);
+  const [shiftNameDraft, setShiftNameDraft] = useState(activeShift.shiftName);
+
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>(() => {
-    const saved = localStorage.getItem('kasir_held_carts');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('kasir_held_carts');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
   const [showHeldModal, setShowHeldModal] = useState(false);
 
@@ -53,6 +83,10 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
   }, [heldCarts]);
 
   useEffect(() => {
+    localStorage.setItem('kasir_active_shift', JSON.stringify(activeShift));
+  }, [activeShift]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
         e.preventDefault();
@@ -66,6 +100,21 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const openShiftModal = () => {
+    setShiftCashierDraft(activeShift.cashierName);
+    setShiftNameDraft(activeShift.shiftName);
+    setShowShiftModal(true);
+  };
+
+  const handleSaveShift = (e: React.FormEvent) => {
+    e.preventDefault();
+    setActiveShift({
+      cashierName: shiftCashierDraft.trim() || 'Kasir 1',
+      shiftName: shiftNameDraft
+    });
+    setShowShiftModal(false);
+  };
 
   const categories = ['Semua', ...Array.from(new Set(products.map((p) => p.category)))];
   const filteredProducts = products.filter((p) => {
@@ -84,9 +133,36 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
           alert(`Stok "${product.name}" hanya tersisa ${product.stock}!`);
           return prev;
         }
-        return prev.map((item) => (item.id === product.id ? { ...item, qty: item.qty + 1 } : item));
+        return prev.map((item) => {
+          if (item.id !== product.id) return item;
+          const nextQty = item.qty + 1;
+          const appliedPrice = getEffectiveUnitPrice(product, nextQty);
+          return {
+            ...item,
+            sellPrice: product.sellPrice,
+            wholesaleMinQty: product.wholesaleMinQty,
+            wholesalePrice: product.wholesalePrice,
+            appliedPrice,
+            isWholesale: appliedPrice < product.sellPrice,
+            qty: nextQty
+          };
+        });
       }
-      return [...prev, { id: product.id, name: product.name, costPrice: product.costPrice, sellPrice: product.sellPrice, qty: 1 }];
+      const appliedPrice = getEffectiveUnitPrice(product, 1);
+      return [
+        ...prev,
+        {
+          id: product.id,
+          name: product.name,
+          costPrice: product.costPrice,
+          sellPrice: product.sellPrice,
+          wholesaleMinQty: product.wholesaleMinQty,
+          wholesalePrice: product.wholesalePrice,
+          appliedPrice,
+          isWholesale: appliedPrice < product.sellPrice,
+          qty: 1
+        }
+      ];
     });
   };
 
@@ -101,7 +177,17 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
             alert(`Maksimal stok tersedia: ${master.stock}`);
             return item;
           }
-          return { ...item, qty: nextQty };
+          const src = master || item;
+          const appliedPrice = getEffectiveUnitPrice(src, nextQty);
+          return {
+            ...item,
+            sellPrice: src.sellPrice,
+            wholesaleMinQty: src.wholesaleMinQty,
+            wholesalePrice: src.wholesalePrice,
+            appliedPrice,
+            isWholesale: appliedPrice < src.sellPrice,
+            qty: nextQty
+          };
         })
         .filter((item) => item.qty > 0)
     );
@@ -142,7 +228,7 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
     setShowHeldModal(false);
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + item.sellPrice * item.qty, 0);
+  const subtotal = cart.reduce((sum, item) => sum + (item.appliedPrice ?? item.sellPrice) * item.qty, 0);
   const discountAmount =
     discountType === 'PERCENT'
       ? Math.round((subtotal * Math.min(100, Math.max(0, discountValue))) / 100)
@@ -233,6 +319,8 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
     const newTrx: Transaction = {
       id: 'TRX-' + Date.now().toString().slice(-6),
       timestamp: new Date().toISOString(),
+      cashierName: activeShift.cashierName,
+      shiftName: activeShift.shiftName,
       items: [...cart],
       subtotal: data.subtotal,
       discountAmount: data.discountAmount,
@@ -268,8 +356,13 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
   return (
     <div className="pos-grid">
       <div className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', paddingBottom: 10, marginBottom: 12 }}>
-          <h2 style={{ border: 'none', margin: 0, padding: 0 }}>Katalog Barang</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', paddingBottom: 10, marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h2 style={{ border: 'none', margin: 0, padding: 0 }}>Katalog Barang</h2>
+            <button type="button" className="shift-pill" onClick={openShiftModal} title="Klik untuk ganti kasir atau shift">
+              Kasir: {activeShift.cashierName} ({activeShift.shiftName})
+            </button>
+          </div>
           <small style={{ color: '#6b7280' }}>Pintasan: <strong>[F2]</strong> Scan • <strong>[F8]</strong> Bayar</small>
         </div>
         <input
@@ -300,6 +393,7 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
           {filteredProducts.map((p) => {
             const isOut = p.stock <= 0;
             const isLow = p.stock > 0 && p.stock <= 5;
+            const hasWholesale = (p.wholesaleMinQty || 0) > 1 && (p.wholesalePrice || 0) > 0;
             return (
               <div
                 key={p.id}
@@ -312,6 +406,11 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
                 </div>
                 <div><strong>{p.name}</strong></div>
                 <div className="price">{formatRupiah(p.sellPrice)}</div>
+                {hasWholesale && (
+                  <div className="wholesale-pill">
+                    Grosir ≥{p.wholesaleMinQty}: {formatRupiah(p.wholesalePrice!)}
+                  </div>
+                )}
                 <div className={`stock ${isOut ? 'empty' : isLow ? 'low' : ''}`}>
                   {isOut ? 'Stok Habis' : isLow ? `Stok Menipis: ${p.stock}` : `Stok: ${p.stock}`}
                 </div>
@@ -336,19 +435,42 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
           {cart.length === 0 ? (
             <p style={{ color: '#6b7280', textAlign: 'center' }}>Scan atau klik barang untuk mulai transaksi</p>
           ) : (
-            cart.map((item) => (
-              <div key={item.id} className="cart-item">
-                <div>
-                  <strong>{item.name}</strong><br />
-                  <small>{formatRupiah(item.sellPrice)} x {item.qty} = <strong>{formatRupiah(item.sellPrice * item.qty)}</strong></small>
+            cart.map((item) => {
+              const unitPrice = item.appliedPrice ?? item.sellPrice;
+              const minQty = item.wholesaleMinQty || 0;
+              const wPrice = item.wholesalePrice || 0;
+              return (
+                <div key={item.id} className="cart-item">
+                  <div>
+                    <strong>{item.name}</strong>
+                    {item.isWholesale && <span className="badge-grosir-active">GROSIR</span>}
+                    <br />
+                    <small>
+                      {item.isWholesale ? (
+                        <>
+                          <span style={{ textDecoration: 'line-through', color: '#9ca3af' }}>{formatRupiah(item.sellPrice)}</span>{' '}
+                          {formatRupiah(unitPrice)} x {item.qty} = <strong>{formatRupiah(unitPrice * item.qty)}</strong>
+                        </>
+                      ) : (
+                        <>
+                          {formatRupiah(unitPrice)} x {item.qty} = <strong>{formatRupiah(unitPrice * item.qty)}</strong>
+                        </>
+                      )}
+                    </small>
+                    {!item.isWholesale && minQty > 1 && wPrice > 0 && item.qty < minQty && (
+                      <span className="hint-grosir">
+                        +{minQty - item.qty} pcs lagi -&gt; Harga Grosir {formatRupiah(wPrice)}/pcs
+                      </span>
+                    )}
+                  </div>
+                  <div className="qty-controls">
+                    <button onClick={() => updateQty(item.id, -1)}>-</button>
+                    <span style={{ margin: '0 8px', fontWeight: 'bold' }}>{item.qty}</span>
+                    <button onClick={() => updateQty(item.id, 1)}>+</button>
+                  </div>
                 </div>
-                <div className="qty-controls">
-                  <button onClick={() => updateQty(item.id, -1)}>-</button>
-                  <span style={{ margin: '0 8px', fontWeight: 'bold' }}>{item.qty}</span>
-                  <button onClick={() => updateQty(item.id, 1)}>+</button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -430,6 +552,38 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
         </div>
       </div>
 
+      {showShiftModal && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ maxWidth: 390 }}>
+            <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>Pengaturan Kasir & Pergantian Shift</h3>
+            <p style={{ fontSize: '0.83rem', color: '#6b7280', marginTop: 0 }}>
+              Nama kasir dan shift aktif akan tercetak pada struk dan tercatat pada transaksi.
+            </p>
+            <form onSubmit={handleSaveShift}>
+              <label>Nama Kasir Bertugas</label>
+              <input
+                type="text"
+                value={shiftCashierDraft}
+                onChange={(e) => setShiftCashierDraft(e.target.value)}
+                required
+                autoFocus
+              />
+              <label>Pilih Shift Kerja</label>
+              <select value={shiftNameDraft} onChange={(e) => setShiftNameDraft(e.target.value)}>
+                <option value="Shift Pagi">Shift Pagi</option>
+                <option value="Shift Siang">Shift Siang</option>
+                <option value="Shift Malam">Shift Malam</option>
+                <option value="Full Day">Full Day</option>
+              </select>
+              <div className="modal-actions" style={{ marginTop: 10 }}>
+                <button type="submit" className="btn-print">Simpan Shift Aktif</button>
+                <button type="button" className="btn-close" onClick={() => setShowShiftModal(false)}>Batal</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showHeldModal && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -438,7 +592,7 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
               <p style={{ color: '#6b7280', textAlign: 'center' }}>Tidak ada antrean yang ditahan.</p>
             ) : (
               heldCarts.map((h, idx) => {
-                const total = h.items.reduce((s, i) => s + i.sellPrice * i.qty, 0);
+                const total = h.items.reduce((s, i) => s + (i.appliedPrice ?? i.sellPrice) * i.qty, 0);
                 return (
                   <div key={h.id} className="held-item">
                     <div>
@@ -523,16 +677,22 @@ export const PosPage: React.FC<PosPageProps> = ({ userId, products, storeSetting
               <div className="rec-divider" />
               <div>No: {receiptTrx.id}</div>
               <div>Tgl: {new Date(receiptTrx.timestamp).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</div>
+              {receiptTrx.cashierName && (
+                <div>Kasir: {receiptTrx.cashierName} ({receiptTrx.shiftName || '-'})</div>
+              )}
               <div className="rec-divider" />
-              {receiptTrx.items.map((item) => (
-                <div key={item.id}>
-                  <div>{item.name}</div>
-                  <div className="rec-row">
-                    <span>{item.qty} x {item.sellPrice.toLocaleString('id-ID')}</span>
-                    <span>{(item.qty * item.sellPrice).toLocaleString('id-ID')}</span>
+              {receiptTrx.items.map((item) => {
+                const unitPrice = item.appliedPrice ?? item.sellPrice;
+                return (
+                  <div key={item.id}>
+                    <div>{item.name}{item.isWholesale ? ' (Grosir)' : ''}</div>
+                    <div className="rec-row">
+                      <span>{item.qty} x {unitPrice.toLocaleString('id-ID')}</span>
+                      <span>{(item.qty * unitPrice).toLocaleString('id-ID')}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div className="rec-divider" />
               {receiptTrx.discountAmount > 0 && (
                 <>

@@ -1,5 +1,10 @@
 export type PaymentMethod = 'TUNAI' | 'QRIS' | 'TRANSFER' | 'CAMPURAN';
 
+export interface ActiveShift {
+  cashierName: string;
+  shiftName: string;
+}
+
 export interface Product {
   id: string;
   barcode: string;
@@ -7,6 +12,8 @@ export interface Product {
   category: string;
   costPrice: number;
   sellPrice: number;
+  wholesaleMinQty?: number;
+  wholesalePrice?: number;
   stock: number;
   updatedAt?: string;
 }
@@ -16,12 +23,18 @@ export interface CartItem {
   name: string;
   costPrice: number;
   sellPrice: number;
+  wholesaleMinQty?: number;
+  wholesalePrice?: number;
+  appliedPrice?: number;
+  isWholesale?: boolean;
   qty: number;
 }
 
 export interface Transaction {
   id: string;
   timestamp: string;
+  cashierName?: string;
+  shiftName?: string;
   items: CartItem[];
   subtotal: number;
   discountAmount: number;
@@ -40,6 +53,8 @@ export interface Transaction {
 export interface DrawerExpense {
   id: number;
   time: string;
+  cashierName?: string;
+  shiftName?: string;
   note: string;
   amount: number;
 }
