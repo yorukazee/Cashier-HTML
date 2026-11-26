@@ -69,6 +69,46 @@ export async function syncProductToCloud(userId: string, product: Product) {
   );
 }
 
+export async function adjustProductStockInCloud(
+  userId: string,
+  productId: string,
+  delta: number
+): Promise<number | null> {
+  const localProduct = await db.products.get(productId);
+  let nextStock = localProduct ? Math.max(0, localProduct.stock + delta) : null;
+
+  if (supabase && navigator.onLine) {
+    const { data: cloudRow } = await supabase
+      .from('products')
+      .select('stock')
+      .eq('user_id', userId)
+      .eq('id', productId)
+      .maybeSingle();
+
+    const baseStock =
+      typeof cloudRow?.stock === 'number'
+        ? cloudRow.stock
+        : (localProduct?.stock ?? 0);
+
+    nextStock = Math.max(0, baseStock + delta);
+
+    await supabase
+      .from('products')
+      .update({
+        stock: nextStock,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .eq('id', productId);
+  }
+
+  if (localProduct && nextStock !== null) {
+    await db.products.update(productId, { stock: nextStock });
+  }
+
+  return nextStock;
+}
+
 export async function deleteProductFromCloud(userId: string, productId: string) {
   if (!supabase || !navigator.onLine) return;
   await supabase.from('products').delete().eq('user_id', userId).eq('id', productId);
