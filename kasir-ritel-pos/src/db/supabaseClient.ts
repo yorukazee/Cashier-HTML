@@ -62,6 +62,8 @@ export async function syncProductToCloud(userId: string, product: Product) {
       category: product.category,
       cost_price: product.costPrice,
       sell_price: product.sellPrice,
+      wholesale_min_qty: product.wholesaleMinQty || 0,
+      wholesale_price: product.wholesalePrice || 0,
       stock: product.stock,
       updated_at: new Date().toISOString()
     },
@@ -126,6 +128,8 @@ export async function syncPendingTransactions(userId: string) {
         user_id: userId,
         id: trx.id,
         timestamp: trx.timestamp,
+        cashier_name: trx.cashierName || null,
+        shift_name: trx.shiftName || null,
         items: trx.items,
         subtotal: trx.subtotal,
         discount_amount: trx.discountAmount,
